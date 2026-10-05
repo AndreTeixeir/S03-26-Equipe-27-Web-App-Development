@@ -112,6 +112,24 @@ class TrafficRecordServiceTests {
     }
 
     @Test
+    @DisplayName("caps the requested page size at 100 records")
+    void capsRequestedPageSize() {
+        when(trafficRecordRepository.findPageWithStreet(any(), any()))
+                .thenAnswer(invocation -> new PageImpl<>(List.of(), invocation.getArgument(1), 0));
+
+        PagedTrafficRecordResponse oversized = trafficRecordService.findPage(0, 1000, null);
+        PagedTrafficRecordResponse atLimit = trafficRecordService.findPage(0, 100, null);
+
+        ArgumentCaptor<org.springframework.data.domain.Pageable> pageables =
+                ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(trafficRecordRepository, org.mockito.Mockito.times(2)).findPageWithStreet(any(), pageables.capture());
+        assertThat(pageables.getAllValues()).extracting(org.springframework.data.domain.Pageable::getPageSize)
+                .containsExactly(100, 100);
+        assertThat(oversized.size()).isEqualTo(100);
+        assertThat(atLimit.size()).isEqualTo(100);
+    }
+
+    @Test
     @DisplayName("summarizes all records when no ids are provided")
     void summarizesAllRecordsWhenNoIdsProvided() {
         TrafficRecordRepository.TrafficRecordSummaryView summaryView = mock(TrafficRecordRepository.TrafficRecordSummaryView.class);

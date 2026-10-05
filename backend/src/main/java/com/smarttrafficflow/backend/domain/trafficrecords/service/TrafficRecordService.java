@@ -22,6 +22,7 @@ import java.util.UUID;
 public class TrafficRecordService {
 
     private static final Logger log = LoggerFactory.getLogger(TrafficRecordService.class);
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final TrafficRecordRepository repository;
     private final StreetService streetService;
@@ -58,7 +59,7 @@ public class TrafficRecordService {
         String queryPattern = buildQueryPattern(query);
         PageRequest pageRequest = PageRequest.of(
                 page,
-                size,
+                Math.min(size, MAX_PAGE_SIZE),
                 Sort.by(
                         Sort.Order.desc("timestamp"),
                         Sort.Order.desc("id")
