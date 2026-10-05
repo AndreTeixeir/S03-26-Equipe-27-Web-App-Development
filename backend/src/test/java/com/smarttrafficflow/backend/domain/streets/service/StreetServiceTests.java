@@ -32,20 +32,6 @@ class StreetServiceTests {
     private StreetService streetService;
 
     @Test
-    @DisplayName("maps all streets to response objects")
-    void mapsAllStreetsToResponses() {
-        when(streetRepository.findAll()).thenReturn(List.of(
-                street(101L, "Avenida Central"),
-                street(202L, "Rua Um")
-        ));
-
-        List<StreetResponse> response = streetService.findAll();
-
-        assertThat(response).extracting(StreetResponse::osmWayId).containsExactly(101L, 202L);
-        assertThat(response).extracting(StreetResponse::name).containsExactly("Avenida Central", "Rua Um");
-    }
-
-    @Test
     @DisplayName("returns a street by its osm way id")
     void returnsStreetByOsmWayId() {
         Street street = street(101L, "Avenida Central");

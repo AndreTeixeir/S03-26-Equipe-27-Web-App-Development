@@ -19,13 +19,6 @@ public class StreetService {
         this.streetRepository = streetRepository;
     }
 
-    public List<StreetResponse> findAll() {
-        return streetRepository.findAll()
-                .stream()
-                .map(street -> new StreetResponse(street.getId(), street.getOsmWayId(), street.getName()))
-                .toList();
-    }
-
     public Street getByOsmWayId(Long osmWayId) {
         return streetRepository.findByOsmWayId(osmWayId)
                 .orElseThrow(() -> new IllegalArgumentException("streetOsmWayId invalido: " + osmWayId));
