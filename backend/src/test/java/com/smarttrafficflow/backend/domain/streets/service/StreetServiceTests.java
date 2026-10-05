@@ -96,19 +96,19 @@ class StreetServiceTests {
     }
 
     @Test
-    @DisplayName("returns a random street osm way id when one exists")
-    void returnsRandomStreetOsmWayId() {
-        when(streetRepository.findRandomOsmWayId()).thenReturn(303L);
+    @DisplayName("returns the sampled random street osm way ids")
+    void returnsRandomStreetOsmWayIds() {
+        when(streetRepository.findRandomOsmWayIds(3)).thenReturn(List.of(303L, 101L));
 
-        assertThat(streetService.getRandomStreetOsmWayId()).isEqualTo(303L);
+        assertThat(streetService.getRandomStreetOsmWayIds(3)).containsExactly(303L, 101L);
     }
 
     @Test
     @DisplayName("rejects random street requests when no streets were imported")
     void rejectsRandomStreetRequestsWhenNoStreetExists() {
-        when(streetRepository.findRandomOsmWayId()).thenReturn(null);
+        when(streetRepository.findRandomOsmWayIds(5)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> streetService.getRandomStreetOsmWayId())
+        assertThatThrownBy(() -> streetService.getRandomStreetOsmWayIds(5))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Nenhuma rua real importada");
     }

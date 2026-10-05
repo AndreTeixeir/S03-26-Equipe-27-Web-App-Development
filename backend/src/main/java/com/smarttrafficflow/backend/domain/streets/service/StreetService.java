@@ -45,12 +45,12 @@ public class StreetService {
         return new StreetSearchResponse(items, normalizedLimit, normalizedOffset, total);
     }
 
-    public Long getRandomStreetOsmWayId() {
-        Long osmWayId = streetRepository.findRandomOsmWayId();
-        if (osmWayId == null) {
+    public List<Long> getRandomStreetOsmWayIds(int count) {
+        List<Long> osmWayIds = streetRepository.findRandomOsmWayIds(count);
+        if (osmWayIds.isEmpty()) {
             throw new IllegalStateException("Nenhuma rua real importada. Importe GeoJSON antes de simular.");
         }
-        return osmWayId;
+        return osmWayIds;
     }
 
     private int normalizeLimit(Integer limit) {

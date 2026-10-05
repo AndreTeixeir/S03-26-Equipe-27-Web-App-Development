@@ -75,17 +75,25 @@ class StreetRepositoryTests {
     }
 
     @Test
-    @DisplayName("returns the osm way id of an existing street at random")
-    void returnsRandomExistingOsmWayId() {
-        assertThat(streetRepository.findRandomOsmWayId()).isIn(101L, 202L, 303L, 404L);
+    @DisplayName("samples distinct existing osm way ids up to the limit")
+    void samplesDistinctExistingOsmWayIdsUpToLimit() {
+        List<Long> sample = streetRepository.findRandomOsmWayIds(2);
+
+        assertThat(sample).hasSize(2).doesNotHaveDuplicates().isSubsetOf(101L, 202L, 303L, 404L);
     }
 
     @Test
-    @DisplayName("returns null as random osm way id when there are no streets")
-    void returnsNullRandomOsmWayIdWithoutStreets() {
+    @DisplayName("samples every street when the limit exceeds the street count")
+    void samplesEveryStreetWhenLimitExceedsCount() {
+        assertThat(streetRepository.findRandomOsmWayIds(250)).containsExactlyInAnyOrder(101L, 202L, 303L, 404L);
+    }
+
+    @Test
+    @DisplayName("returns an empty sample when there are no streets")
+    void returnsEmptySampleWithoutStreets() {
         jdbcTemplate.update("DELETE FROM streets");
 
-        assertThat(streetRepository.findRandomOsmWayId()).isNull();
+        assertThat(streetRepository.findRandomOsmWayIds(5)).isEmpty();
     }
 
     private void insertStreet(long osmWayId, String name) {

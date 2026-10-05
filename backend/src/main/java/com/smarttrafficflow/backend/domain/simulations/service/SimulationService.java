@@ -36,6 +36,8 @@ public class SimulationService {
         log.info("Simulation started for scenario={} with {} records",
                 request.scenarioName(), request.recordsToGenerate());
 
+        List<Long> streetOsmWayIds = streetService.getRandomStreetOsmWayIds(request.recordsToGenerate());
+
         for (int i = 0; i < request.recordsToGenerate(); i++) {
             String roadType = ROAD_TYPES[random.nextInt(ROAD_TYPES.length)];
             String weather = WEATHER_TYPES[random.nextInt(WEATHER_TYPES.length)];
@@ -48,7 +50,7 @@ public class SimulationService {
                     volume,
                     request.scenarioName(),
                     weather,
-                    streetService.getRandomStreetOsmWayId()
+                    streetOsmWayIds.get(random.nextInt(streetOsmWayIds.size()))
             );
 
             generated.add(trafficRecordService.create(createRequest));
