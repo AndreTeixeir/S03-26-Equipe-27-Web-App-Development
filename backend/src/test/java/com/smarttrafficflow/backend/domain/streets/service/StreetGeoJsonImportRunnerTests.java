@@ -100,6 +100,33 @@ class StreetGeoJsonImportRunnerTests {
     }
 
     @Test
+    @DisplayName("skips streets with invalid geometry or an overlong name and imports the rest")
+    void skipsStructurallyInvalidStreets() throws Exception {
+        Path file = geoJson(
+                feature(990_000_001L, "Rua Valida Um", VALID_LINE),
+                feature(990_000_002L, "Rua De Um Ponto", "[[-46.6333,-23.5505]]"),
+                feature(990_000_003L, "Rua Sem Numero", "[[-46.6333,\"abc\"],[-46.6340,-23.5510]]"),
+                feature(990_000_004L, "R".repeat(181), VALID_LINE),
+                feature(990_000_005L, "Rua Valida Dois", VALID_LINE)
+        );
+
+        runner(file).run();
+
+        assertThat(jdbcTemplate.queryForList("SELECT name FROM streets ORDER BY osm_way_id", String.class))
+                .containsExactly("Rua Valida Um", "Rua Valida Dois");
+    }
+
+    @Test
+    @DisplayName("accepts a name with exactly 180 characters, counting accented letters once")
+    void acceptsNameAtTheColumnLimit() throws Exception {
+        String name = "Á".repeat(180);
+
+        runner(geoJson(feature(990_000_001L, name, VALID_LINE))).run();
+
+        assertThat(jdbcTemplate.queryForList("SELECT name FROM streets", String.class)).containsExactly(name);
+    }
+
+    @Test
     @DisplayName("skips the import when streets already exist")
     void skipsImportWhenStreetsExist() throws Exception {
         runner(geoJson(feature(990_000_001L, "Rua Valida Um", VALID_LINE))).run();

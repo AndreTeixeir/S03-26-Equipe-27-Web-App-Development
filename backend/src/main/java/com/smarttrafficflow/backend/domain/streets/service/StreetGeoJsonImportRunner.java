@@ -27,6 +27,7 @@ import java.util.UUID;
 public class StreetGeoJsonImportRunner implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(StreetGeoJsonImportRunner.class);
+    private static final int MAX_NAME_LENGTH = 180;
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -154,9 +155,23 @@ public class StreetGeoJsonImportRunner implements CommandLineRunner {
                         continue;
                     }
 
+                    // PostGIS stores a one-point LineString as an invalid geometry and turns non-numeric
+                    // coordinates into 0, so malformed lines are rejected here instead of saved corrupted.
+                    if (!hasValidLineCoordinates(geometry.get("coordinates"))) {
+                        log.warn("Skipping OSM way {}: LineString needs at least 2 positions with numeric coordinates",
+                                osmWayId);
+                        skipped++;
+                        continue;
+                    }
+
                     String streetName = properties.path("name").asText("");
                     if (streetName.isBlank()) {
                         streetName = "OSM WAY " + osmWayId;
+                    }
+                    if (streetName.codePointCount(0, streetName.length()) > MAX_NAME_LENGTH) {
+                        log.warn("Skipping OSM way {}: name longer than {} characters", osmWayId, MAX_NAME_LENGTH);
+                        skipped++;
+                        continue;
                     }
 
                     UUID streetId = UUID.nameUUIDFromBytes(("osm-way-" + osmWayId).getBytes(StandardCharsets.UTF_8));
@@ -187,6 +202,24 @@ public class StreetGeoJsonImportRunner implements CommandLineRunner {
         }
 
         return new ImportResult(imported, skipped);
+    }
+
+    private boolean hasValidLineCoordinates(JsonNode coordinates) {
+        if (coordinates == null || !coordinates.isArray() || coordinates.size() < 2) {
+            return false;
+        }
+        for (JsonNode position : coordinates) {
+            if (!position.isArray() || position.size() < 2) {
+                return false;
+            }
+            for (int axis = 0; axis < 2; axis++) {
+                JsonNode value = position.get(axis);
+                if (!value.isNumber() || !Double.isFinite(value.asDouble())) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private long extractOsmWayId(JsonNode properties, JsonNode feature) {
