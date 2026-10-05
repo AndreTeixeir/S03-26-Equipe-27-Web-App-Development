@@ -197,8 +197,8 @@ export const handlers = [
   }),
   http.post(`${BASE}/simulations/generate`, async ({ request }) => {
     const body = (await request.json()) as { recordsToGenerate: number; scenarioName: string };
-    if (body.recordsToGenerate > 500) {
-      return HttpResponse.json({ message: "Máximo 500" }, { status: 400 });
+    if (body.recordsToGenerate > 250) {
+      return HttpResponse.json({ message: "Máximo 250" }, { status: 400 });
     }
     return HttpResponse.json(
       Array.from({ length: body.recordsToGenerate }, (_, index) => ({

@@ -171,7 +171,7 @@ describe("api client", () => {
   });
 
   it("surfaces simulation validation errors", async () => {
-    await expect(generateSimulation({ recordsToGenerate: 501, scenarioName: "Excesso" })).rejects.toMatchObject({
+    await expect(generateSimulation({ recordsToGenerate: 251, scenarioName: "Excesso" })).rejects.toMatchObject({
       status: 400
     } satisfies Partial<ApiError>);
   });
