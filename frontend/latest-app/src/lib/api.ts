@@ -4,7 +4,6 @@ import type {
   PagedResponse,
   SimulationRequest,
   StreetSearchResponse,
-  StreetOption,
   TrafficInsightResponse,
   TrafficRecord,
   TrafficRecordSummary,
@@ -129,10 +128,6 @@ export function getTrafficMap(recordIds: string[]) {
     method: "POST",
     body: JSON.stringify({ recordIds })
   });
-}
-
-export function getStreets() {
-  return request<StreetOption[]>("/streets");
 }
 
 export function searchStreets(query: string, limit = 20, offset = 0) {

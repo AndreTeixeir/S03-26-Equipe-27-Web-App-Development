@@ -40,6 +40,9 @@ Variáveis importantes:
 - `APP_CORS_ALLOWED_ORIGINS`
 - `APP_STREETS_IMPORT_ENABLED`
 - `APP_STREETS_IMPORT_GEOJSON_PATH`
+- `APP_RATE_LIMIT_SIMULATIONS_PER_MINUTE` (padrão `5`): requisições por minuto, por IP, em `POST /api/simulations/generate`
+- `APP_RATE_LIMIT_TRAFFIC_RECORDS_PER_MINUTE` (padrão `30`): requisições por minuto, por IP, em `POST /api/traffic-records`
+- `SPRINGDOC_ENABLED` (padrão `false`): publica `/swagger-ui.html` e `/v3/api-docs`; no perfil `dev` eles ficam sempre ligados
 
 ## Importação de GeoJSON na inicialização
 

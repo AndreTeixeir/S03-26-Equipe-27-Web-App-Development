@@ -28,6 +28,6 @@ public interface StreetRepository extends JpaRepository<Street, UUID> {
             """, nativeQuery = true)
     long countByNameFilter(@Param("query") String query);
 
-    @Query(value = "SELECT osm_way_id FROM streets ORDER BY random() LIMIT 1", nativeQuery = true)
-    Long findRandomOsmWayId();
+    @Query(value = "SELECT osm_way_id FROM streets ORDER BY random() LIMIT :limit", nativeQuery = true)
+    List<Long> findRandomOsmWayIds(@Param("limit") int limit);
 }

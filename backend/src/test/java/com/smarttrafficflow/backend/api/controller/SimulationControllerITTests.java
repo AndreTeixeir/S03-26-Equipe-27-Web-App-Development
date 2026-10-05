@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -70,6 +71,40 @@ class SimulationControllerITTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("recordsToGenerate")));
+    }
+
+    @Test
+    @DisplayName("rejects simulation requests above the maximum amount")
+    void rejectsSimulationRequestsAboveMaximum() throws Exception {
+        mockMvc.perform(post("/api/simulations/generate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recordsToGenerate": 251,
+                                  "scenarioName": "Teste"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("recordsToGenerate")));
+
+        verifyNoInteractions(simulationService);
+    }
+
+    @Test
+    @DisplayName("accepts simulation requests at the maximum amount")
+    void acceptsSimulationRequestsAtMaximum() throws Exception {
+        when(simulationService.generate(any())).thenReturn(List.of());
+
+        mockMvc.perform(post("/api/simulations/generate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recordsToGenerate": 250,
+                                  "scenarioName": "Teste"
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 
     @Test

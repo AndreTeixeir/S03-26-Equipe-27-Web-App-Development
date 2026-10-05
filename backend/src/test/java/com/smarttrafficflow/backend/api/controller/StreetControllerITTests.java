@@ -2,11 +2,13 @@ package com.smarttrafficflow.backend.api.controller;
 
 import com.smarttrafficflow.backend.api.dto.StreetResponse;
 import com.smarttrafficflow.backend.api.dto.StreetSearchResponse;
+import com.smarttrafficflow.backend.api.exception.GlobalExceptionHandler;
 import com.smarttrafficflow.backend.domain.streets.service.StreetService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -22,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(StreetController.class)
 @ActiveProfiles("test")
+@Import(GlobalExceptionHandler.class)
 @DisplayName("StreetController MVC integration tests")
 class StreetControllerITTests {
 
@@ -32,17 +35,11 @@ class StreetControllerITTests {
     private StreetService streetService;
 
     @Test
-    @DisplayName("returns all streets")
-    void returnsAllStreets() throws Exception {
-        when(streetService.findAll()).thenReturn(List.of(
-                new StreetResponse(UUID.randomUUID(), 101L, "Avenida Central"),
-                new StreetResponse(UUID.randomUUID(), 202L, "Rua Um")
-        ));
-
+    @DisplayName("does not expose an endpoint that lists every street")
+    void doesNotListEveryStreet() throws Exception {
         mockMvc.perform(get("/api/streets"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].osmWayId").value(101))
-                .andExpect(jsonPath("$[1].name").value("Rua Um"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @Test

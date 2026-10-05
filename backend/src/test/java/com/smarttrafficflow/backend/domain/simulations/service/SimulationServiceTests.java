@@ -21,6 +21,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,20 +45,20 @@ class SimulationServiceTests {
     @Test
     @DisplayName("creates exactly the requested number of records")
     void createsExactlyTheRequestedNumberOfRecords() {
-        when(streetService.getRandomStreetOsmWayId()).thenReturn(101L);
+        when(streetService.getRandomStreetOsmWayIds(anyInt())).thenReturn(List.of(101L));
         when(trafficRecordService.create(any())).thenAnswer(invocation -> responseFrom(invocation.getArgument(0)));
 
         List<TrafficRecordResponse> generated = simulationService.generate(new SimulationRequest(5, "Teste"));
 
         assertThat(generated).hasSize(5);
         verify(trafficRecordService, times(5)).create(any());
-        verify(streetService, times(5)).getRandomStreetOsmWayId();
+        verify(streetService, times(1)).getRandomStreetOsmWayIds(5);
     }
 
     @Test
     @DisplayName("uses the scenario name as the generated event type")
     void usesTheScenarioNameAsEventType() {
-        when(streetService.getRandomStreetOsmWayId()).thenReturn(101L);
+        when(streetService.getRandomStreetOsmWayIds(anyInt())).thenReturn(List.of(101L));
         when(trafficRecordService.create(any())).thenAnswer(invocation -> responseFrom(invocation.getArgument(0)));
 
         simulationService.generate(new SimulationRequest(3, "Varredura Noturna"));
@@ -71,9 +72,25 @@ class SimulationServiceTests {
     }
 
     @Test
+    @DisplayName("assigns every record a street from the sampled streets")
+    void assignsStreetsFromTheSampledStreets() {
+        when(streetService.getRandomStreetOsmWayIds(anyInt())).thenReturn(List.of(101L, 202L, 303L));
+        when(trafficRecordService.create(any())).thenAnswer(invocation -> responseFrom(invocation.getArgument(0)));
+
+        simulationService.generate(new SimulationRequest(20, "Teste"));
+
+        ArgumentCaptor<CreateTrafficRecordRequest> captor = ArgumentCaptor.forClass(CreateTrafficRecordRequest.class);
+        verify(trafficRecordService, times(20)).create(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(CreateTrafficRecordRequest::streetOsmWayId)
+                .allMatch(Set.of(101L, 202L, 303L)::contains);
+        verify(streetService, times(1)).getRandomStreetOsmWayIds(20);
+    }
+
+    @Test
     @DisplayName("generates only supported road types weather values and volume ranges")
     void generatesSupportedRandomValues() {
-        when(streetService.getRandomStreetOsmWayId()).thenReturn(101L);
+        when(streetService.getRandomStreetOsmWayIds(anyInt())).thenReturn(List.of(101L));
         when(trafficRecordService.create(any())).thenAnswer(invocation -> responseFrom(invocation.getArgument(0)));
 
         OffsetDateTime before = OffsetDateTime.now();
@@ -94,7 +111,7 @@ class SimulationServiceTests {
     @Test
     @DisplayName("propagates the street import state error when no street is available")
     void propagatesStreetAvailabilityErrors() {
-        when(streetService.getRandomStreetOsmWayId())
+        when(streetService.getRandomStreetOsmWayIds(anyInt()))
                 .thenThrow(new IllegalStateException("Nenhuma rua real importada. Importe GeoJSON antes de simular."));
 
         assertThatThrownBy(() -> simulationService.generate(new SimulationRequest(1, "Teste")))
