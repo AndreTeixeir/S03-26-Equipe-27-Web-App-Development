@@ -178,7 +178,8 @@ describe("api client", () => {
 
   it("downloads csv export as blob", async () => {
     const blob = await getExport("csv");
-    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe("text/csv");
+    await expect(blob.text()).resolves.toBe("id,timestamp\nrec-1,2024-06-17T08:00:00Z\n");
   });
 
   it("surfaces export errors", async () => {
