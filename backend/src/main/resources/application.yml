@@ -23,6 +23,9 @@ springdoc:
 app:
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
+  rate-limit:
+    simulations-per-minute: ${APP_RATE_LIMIT_SIMULATIONS_PER_MINUTE:5}
+    traffic-records-per-minute: ${APP_RATE_LIMIT_TRAFFIC_RECORDS_PER_MINUTE:30}
   streets:
     import:
       enabled: ${APP_STREETS_IMPORT_ENABLED:false}
