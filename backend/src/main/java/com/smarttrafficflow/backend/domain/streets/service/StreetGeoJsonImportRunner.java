@@ -11,8 +11,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,15 +29,18 @@ public class StreetGeoJsonImportRunner implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(StreetGeoJsonImportRunner.class);
 
     private final JdbcTemplate jdbcTemplate;
+    private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
     private final String geoJsonPath;
 
     public StreetGeoJsonImportRunner(
             JdbcTemplate jdbcTemplate,
+            PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper,
             @Value("${app.streets.import.geojson-path}") String geoJsonPath
     ) {
         this.jdbcTemplate = jdbcTemplate;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
         this.geoJsonPath = geoJsonPath;
     }
@@ -63,6 +69,36 @@ public class StreetGeoJsonImportRunner implements CommandLineRunner {
             throw new IllegalArgumentException("Arquivo GeoJSON nao encontrado: " + geoJsonPath);
         }
 
+        // A single transaction makes the import all-or-nothing: if it fails midway, no street is kept,
+        // the table stays empty and the next start tries the whole import again.
+        ImportResult result;
+        try {
+            result = transactionTemplate.execute(status -> {
+                try {
+                    return importFeatures(path);
+                } catch (IOException ex) {
+                    throw new UncheckedIOException(ex);
+                }
+            });
+        } catch (UncheckedIOException ex) {
+            log.error("Street GeoJSON import failed and was rolled back; no street was saved: {}", ex.getMessage());
+            throw ex.getCause();
+        } catch (RuntimeException ex) {
+            log.error("Street GeoJSON import failed and was rolled back; no street was saved: {}", ex.getMessage());
+            throw ex;
+        }
+
+        Integer finalStreetCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM streets", Integer.class);
+        log.info(
+                "Street GeoJSON import complete: imported={}, skipped={}, finalStreetCount={}, path={}",
+                result.imported(),
+                result.skipped(),
+                finalStreetCount == null ? 0 : finalStreetCount,
+                geoJsonPath
+        );
+    }
+
+    private ImportResult importFeatures(Path path) throws IOException {
         int imported = 0;
         int skipped = 0;
 
@@ -150,14 +186,7 @@ public class StreetGeoJsonImportRunner implements CommandLineRunner {
             }
         }
 
-        Integer finalStreetCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM streets", Integer.class);
-        log.info(
-                "Street GeoJSON import complete: imported={}, skipped={}, finalStreetCount={}, path={}",
-                imported,
-                skipped,
-                finalStreetCount == null ? 0 : finalStreetCount,
-                geoJsonPath
-        );
+        return new ImportResult(imported, skipped);
     }
 
     private long extractOsmWayId(JsonNode properties, JsonNode feature) {
@@ -181,5 +210,8 @@ public class StreetGeoJsonImportRunner implements CommandLineRunner {
         }
 
         return -1;
+    }
+
+    private record ImportResult(int imported, int skipped) {
     }
 }
