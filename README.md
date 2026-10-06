@@ -20,7 +20,7 @@ O deploy da stack completa é orquestrado via **Docker Compose**, subindo quatro
 |---|---|
 | `smarttraffic-db` | PostgreSQL + PostGIS (banco geoespacial) |
 | `smarttraffic-backend` | API Spring Boot |
-| `smarttraffic-frontend` | Aplicação web (Node/Vite) |
+| `smarttraffic-web` | Servidor web (Caddy): frontend, proxy de `/api` e HTTPS |
 | `pgadmin` | Interface de administração do banco |
 
 > Infraestrutura e deploy (provisionamento da instância OCI e configuração do Docker Compose): **André Teixeira**.
