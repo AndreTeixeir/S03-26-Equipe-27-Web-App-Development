@@ -24,6 +24,16 @@ cp .env.example .env
 docker compose --env-file .env up -d --build
 ```
 
+Os valores de `SMARTTRAFFIC_BACKEND_ENV_FILE` e `SMARTTRAFFIC_DATA_DIR` no exemplo são os do servidor (`/opt/smarttrafficflow/...`). **Fora do servidor, aponte os dois para caminhos locais** antes de subir, senão o Compose falha por arquivo ou pasta inexistente:
+
+```bash
+mkdir -p ../.tmp/dados                 # pasta do export.geojson (a .tmp/ da raiz é ignorada pelo git)
+cp ../backend/.env.example ../backend/.env   # preencha SPRING_DATASOURCE_PASSWORD (a mesma de SMARTTRAFFIC_DB_PASSWORD)
+# no infra/.env:
+#   SMARTTRAFFIC_BACKEND_ENV_FILE=../backend/.env
+#   SMARTTRAFFIC_DATA_DIR=../.tmp/dados
+```
+
 Com pgAdmin:
 
 ```bash
@@ -37,7 +47,7 @@ Sem `SMARTTRAFFIC_DOMAIN` o padrão é `localhost`: o app abre em `https://local
 1. Aponte o registro DNS (tipo A) do domínio para o IP público do servidor.
 2. Libere as portas **80 e 443** para a internet (security list/regras de entrada da nuvem e firewall do servidor). A 80 é usada pelo Let's Encrypt para validar o domínio e para redirecionar para HTTPS.
 3. No `infra/.env`, defina `SMARTTRAFFIC_DOMAIN=seu.dominio.com` e as senhas.
-4. Suba a stack com o comando acima. Na primeira requisição o Caddy obtém o certificado sozinho; acompanhe com `docker compose logs -f smarttraffic-web`.
+4. Suba a stack com o comando acima. O Caddy obtém o certificado sozinho ao iniciar; acompanhe com `docker compose logs -f smarttraffic-web`.
 
 O CORS do backend usa `https://<SMARTTRAFFIC_DOMAIN>` automaticamente. Só defina `SMARTTRAFFIC_CORS_ALLOWED_ORIGINS` se usar uma porta diferente de 443.
 
@@ -54,12 +64,17 @@ SMARTTRAFFIC_CORS_ALLOWED_ORIGINS=https://localhost:8443
 SMARTTRAFFIC_DB_PORT_BIND=127.0.0.1:55432
 ```
 
+Nesse modo, acesse direto `https://localhost:8443`. O redirecionamento automático de HTTP para HTTPS só funciona com 80 e 443 publicadas: em portas altas o endereço do redirecionamento perde a porta.
+
 ## Checklist do servidor
 
 1. Registro DNS apontando para o IP da instância.
 2. Portas 80 e 443 abertas na security list da OCI e no firewall da instância.
 3. Fechar as portas 5174 e 8080 para a internet (não são mais usadas; o acesso passa a ser só pelo Caddy).
 4. `.env` do servidor com o domínio e as senhas (e `backend.env` com `SPRING_DATASOURCE_PASSWORD`, igual a `SMARTTRAFFIC_DB_PASSWORD`).
+   - **Banco já existente:** `POSTGRES_PASSWORD` só vale na primeira criação do volume `postgres_data`. Se o volume do servidor já existe, a senha do `.env` precisa ser **igual à senha atual do banco**, ou deve ser trocada antes (`ALTER USER ... PASSWORD ...` dentro do banco). Se forem diferentes, o backend não autentica, fica `unhealthy` e o web não sobe.
+   - `export.geojson`: o diretório e o arquivo precisam ser legíveis pelo uid `10001` do backend (`chmod 755` no diretório e `chmod 644` no arquivo). Se quiser importar as ruas, o `backend.env` precisa de `APP_STREETS_IMPORT_ENABLED=true` e `APP_STREETS_IMPORT_GEOJSON_PATH=/runtime-data/export.geojson`.
+   - Não mude `SERVER_PORT` no `backend.env`: o healthcheck e o proxy usam a porta 8080.
 5. Deploy: `docker compose --env-file .env up -d --build --remove-orphans` (remove o container antigo do frontend em modo dev).
 6. Testar o HTTPS: `https://seu.dominio.com` abre o app e `https://seu.dominio.com/api/traffic-records/summary` responde.
 7. Atualizar o link da demo no `README.md` da raiz.

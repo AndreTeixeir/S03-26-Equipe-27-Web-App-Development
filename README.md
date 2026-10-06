@@ -49,6 +49,10 @@ set -a && source .env && set +a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
+> **Não rode `./mvnw test` nesse mesmo terminal.** Com `SPRING_DATASOURCE_URL` exportada, os testes deixam de usar o banco descartável (Testcontainers) e passam a apagar dados do banco apontado por ela. Rode os testes em outro terminal, sem as variáveis.
+
+A importação de ruas vem desligada no `.env.example` (`APP_STREETS_IMPORT_ENABLED=false`). Para ligá-la, aponte `APP_STREETS_IMPORT_GEOJSON_PATH` para um arquivo local.
+
 ### 2. Frontend
 
 ```bash
@@ -59,13 +63,15 @@ npm run dev
 
 ### 3. Infra com Docker Compose (opcional)
 
-Copie `infra/.env.example` para `infra/.env` e preencha as senhas (`SMARTTRAFFIC_DB_PASSWORD` e `SMARTTRAFFIC_PGADMIN_PASSWORD` são obrigatórias, sem valor padrão):
+Copie `infra/.env.example` para `infra/.env` e preencha as senhas (`SMARTTRAFFIC_DB_PASSWORD` e `SMARTTRAFFIC_PGADMIN_PASSWORD` são obrigatórias, sem valor padrão). Fora do servidor, aponte também `SMARTTRAFFIC_BACKEND_ENV_FILE` (por exemplo `../backend/.env`) e `SMARTTRAFFIC_DATA_DIR` (uma pasta local que exista) para caminhos locais; os valores do exemplo são os do servidor. Detalhes em `infra/README.md`.
 
 ```bash
 cd infra
 cp .env.example .env
 docker compose --env-file .env up -d --build
 ```
+
+Sem domínio configurado, o app abre em `https://localhost` com certificado local (o navegador avisa que não é confiável).
 
 Para subir também o pgAdmin:
 
