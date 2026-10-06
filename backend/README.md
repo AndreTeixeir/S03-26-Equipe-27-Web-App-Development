@@ -12,6 +12,8 @@ API REST do SmartTrafficFlow, desenvolvida em Spring Boot para processar e expor
 
 ## Execução local
 
+A senha do banco **não tem valor padrão**. Sem `SPRING_DATASOURCE_PASSWORD` a aplicação se recusa a subir (perfis padrão e `dev`). O Spring Boot não lê o arquivo `.env` sozinho: exporte as variáveis no terminal (`set -a && source .env && set +a`) ou cadastre-as na configuração de execução da IDE.
+
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
@@ -36,7 +38,7 @@ Variáveis importantes:
 
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
+- `SPRING_DATASOURCE_PASSWORD` (obrigatória, sem valor padrão)
 - `APP_CORS_ALLOWED_ORIGINS`
 - `APP_STREETS_IMPORT_ENABLED`
 - `APP_STREETS_IMPORT_GEOJSON_PATH`

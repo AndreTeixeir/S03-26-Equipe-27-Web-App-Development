@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${SMARTTRAFFIC_DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${SMARTTRAFFIC_DB_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${SMARTTRAFFIC_DB_PASSWORD:?Defina SMARTTRAFFIC_DB_PASSWORD no arquivo .env (veja infra/.env.example)}
       POSTGRES_DB: ${SMARTTRAFFIC_DB_NAME:-smarttrafficflow}
     ports:
       - "${SMARTTRAFFIC_DB_PORT_BIND:-127.0.0.1:5432}:5432"
@@ -61,7 +61,7 @@ services:
       - admin
     environment:
       PGADMIN_DEFAULT_EMAIL: ${SMARTTRAFFIC_PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${SMARTTRAFFIC_PGADMIN_PASSWORD:-password}
+      PGADMIN_DEFAULT_PASSWORD: ${SMARTTRAFFIC_PGADMIN_PASSWORD:?Defina SMARTTRAFFIC_PGADMIN_PASSWORD no arquivo .env (veja infra/.env.example)}
     ports:
       - "${SMARTTRAFFIC_PGADMIN_PORT_BIND:-127.0.0.1:8100}:80"
     networks:

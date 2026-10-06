@@ -36,8 +36,16 @@ O deploy da stack completa é orquestrado via **Docker Compose**, subindo quatro
 
 ### 1. Backend
 
+O backend precisa de um PostgreSQL com PostGIS e **não tem senha padrão**: sem `SPRING_DATASOURCE_PASSWORD` a aplicação se recusa a subir, com uma mensagem apontando a variável que falta.
+
+O Spring Boot **não lê o arquivo `.env` sozinho**. Copie o exemplo, preencha os valores e exporte as variáveis no terminal (ou cadastre-as na configuração de execução da IDE, por exemplo no IntelliJ):
+
 ```bash
 cd backend
+cp .env.example .env
+# edite o .env: defina SPRING_DATASOURCE_PASSWORD e, fora do Docker,
+# troque o host de SPRING_DATASOURCE_URL para localhost
+set -a && source .env && set +a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
@@ -51,8 +59,11 @@ npm run dev
 
 ### 3. Infra com Docker Compose (opcional)
 
+Copie `infra/.env.example` para `infra/.env` e preencha as senhas (`SMARTTRAFFIC_DB_PASSWORD` e `SMARTTRAFFIC_PGADMIN_PASSWORD` são obrigatórias, sem valor padrão):
+
 ```bash
 cd infra
+cp .env.example .env
 docker compose --env-file .env up -d --build
 ```
 
