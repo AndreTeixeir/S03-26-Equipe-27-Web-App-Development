@@ -1,6 +1,9 @@
 # Servidor web do SmartTrafficFlow: serve o build do frontend, repassa /api ao backend
 # e cuida do HTTPS automático (Let's Encrypt) quando o domínio é público.
 {
+	# O container roda sem root e não precisa confiar na CA local dentro de si.
+	skip_install_trust
+
 	servers {
 		protocols h1 h2
 	}
