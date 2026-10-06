@@ -18,11 +18,22 @@
 		reverse_proxy smarttraffic-backend:8080
 	}
 
+	# Arquivos do build têm hash no nome: cache longo, mas só para arquivo que existe.
+	# Um asset ausente (por exemplo, de um deploy anterior) responde 404 em vez de cair no index.html.
+	handle /assets/* {
+		root * /srv
+
+		@existe file
+		header @existe Cache-Control "public, max-age=31536000, immutable"
+
+		file_server
+	}
+
 	handle {
 		root * /srv
 
-		@assets path /assets/*
-		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# O index.html muda a cada deploy e aponta para os assets novos.
+		header Cache-Control "no-cache"
 
 		try_files {path} /index.html
 		file_server
