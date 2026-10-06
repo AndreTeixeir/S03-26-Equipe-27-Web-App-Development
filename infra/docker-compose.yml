@@ -30,6 +30,9 @@ services:
       # Origem do navegador: o endereço https pelo qual o web (Caddy) é acessado.
       # Em portas diferentes de 443, defina SMARTTRAFFIC_CORS_ALLOWED_ORIGINS com a porta.
       APP_CORS_ALLOWED_ORIGINS: ${SMARTTRAFFIC_CORS_ALLOWED_ORIGINS:-https://${SMARTTRAFFIC_DOMAIN:-localhost}}
+      # O limite de requisições é por IP: sem isso todos os clientes apareceriam com o IP do web.
+      # Só é seguro porque o backend não publica porta e o Caddy sobrescreve o X-Forwarded-For recebido.
+      APP_CLIENT_IP_HEADER: X-Forwarded-For
     # Sem "ports": o backend só é alcançado pelo web, dentro da rede do Compose.
     networks:
       - backend-network
