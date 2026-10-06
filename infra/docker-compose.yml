@@ -34,7 +34,17 @@ services:
     networks:
       - backend-network
     depends_on:
-      - smarttraffic-db
+      smarttraffic-db:
+        condition: service_healthy
+    # Sem actuator no projeto: o healthcheck consulta uma rota leve da API que passa pelo banco.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/api/traffic-records?page=0&size=1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    cap_drop:
+      - ALL
     volumes:
       - ${SMARTTRAFFIC_DATA_DIR:-/opt/smarttrafficflow/data}:/runtime-data:ro
 
@@ -54,13 +64,18 @@ services:
     networks:
       - backend-network
     depends_on:
-      - smarttraffic-backend
+      smarttraffic-backend:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     volumes:
       - caddy_data:/data
       - caddy_config:/config
 
   pgadmin:
-    image: dpage/pgadmin4
+    image: dpage/pgadmin4:9.18.0
     container_name: pgadmin-ui
     restart: unless-stopped
     profiles:
@@ -73,7 +88,8 @@ services:
     networks:
       - backend-network
     depends_on:
-      - smarttraffic-db
+      smarttraffic-db:
+        condition: service_healthy
 
 networks:
   backend-network:

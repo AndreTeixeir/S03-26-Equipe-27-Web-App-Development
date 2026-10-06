@@ -9,6 +9,12 @@ Orquestração local/runtime dos serviços do SmartTrafficFlow via Docker Compos
 - `smarttraffic-web`: Caddy. Serve o build do frontend (com fallback de SPA para `index.html`), repassa `/api` ao backend e cuida do HTTPS automático. É o único ponto de entrada público (portas 80 e 443).
 - `pgadmin`: interface administrativa (opcional via profile `admin`, publicada só em `127.0.0.1`).
 
+### Ordem de inicialização e usuários
+
+- O backend só inicia depois que o banco está `healthy` e o web só inicia depois que o backend está `healthy`. Como o projeto não tem actuator, o healthcheck do backend consulta `GET /api/traffic-records?page=0&size=1`, uma rota leve que passa pelo banco.
+- Backend e web rodam **sem root** (usuário `app` e usuário `web`, uid `10001`) e sem capabilities extras; o web mantém apenas `NET_BIND_SERVICE`, para abrir as portas 80 e 443.
+- Versões fixadas: Caddy `2.11.7`, Node de build `22.23.3`, pgAdmin `9.18.0`. Para atualizar, troque a tag e teste a stack.
+
 ## Subir stack
 
 Copie `.env.example` para `.env` e preencha os valores. As senhas (`SMARTTRAFFIC_DB_PASSWORD` e `SMARTTRAFFIC_PGADMIN_PASSWORD`) **não têm valor padrão**: sem elas o Compose se recusa a subir, com mensagem apontando a variável.
@@ -87,6 +93,8 @@ Variáveis principais:
 
 O backend espera ler o arquivo de ruas por mount em `/runtime-data/export.geojson`.  
 No Compose, esse mount vem de `SMARTTRAFFIC_DATA_DIR`.
+
+Como o backend roda sem root (uid `10001`), o diretório e o arquivo precisam ser legíveis por outros usuários (por exemplo `chmod 755` no diretório e `chmod 644` no `export.geojson`).
 
 ### Como gerar o arquivo sem versionar no Git
 
