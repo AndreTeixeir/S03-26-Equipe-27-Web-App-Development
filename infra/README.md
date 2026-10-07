@@ -6,7 +6,7 @@ Orquestração local/runtime dos serviços do SmartTrafficFlow via Docker Compos
 
 - `smarttraffic-db`: PostgreSQL com PostGIS (publicado só em `127.0.0.1`).
 - `smarttraffic-backend`: API Spring Boot. **Não publica porta**: só é alcançado pelo web, dentro da rede do Compose.
-- `smarttraffic-web`: Caddy. Serve o build do frontend (com fallback de SPA para `index.html`), repassa `/api` ao backend e cuida do HTTPS automático. É o único ponto de entrada público (portas 80 e 443).
+- `smarttraffic-web`: Caddy. Serve o build do frontend (com fallback de SPA para `index.html`), repassa `/api` ao backend e cuida do HTTPS automático. É o único ponto de entrada público (portas 80 e 443, mais a 5174, que só redireciona o endereço antigo da demo para o domínio).
 - `pgadmin`: interface administrativa (opcional via profile `admin`, publicada só em `127.0.0.1`).
 
 ### Ordem de inicialização e usuários
@@ -51,6 +51,8 @@ Sem `SMARTTRAFFIC_DOMAIN` o padrão é `localhost`: o app abre em `https://local
 
 O CORS do backend usa `https://<SMARTTRAFFIC_DOMAIN>` automaticamente. Só defina `SMARTTRAFFIC_CORS_ALLOWED_ORIGINS` se usar uma porta diferente de 443.
 
+Endereços antigos da demo continuam funcionando: `http://<IP do servidor>` e `http://<IP do servidor>:5174` (a porta do antigo servidor de desenvolvimento) redirecionam para `https://<SMARTTRAFFIC_DOMAIN>`, mantendo o caminho. A porta do host para a 5174 é configurável por `SMARTTRAFFIC_WEB_LEGACY_BIND`.
+
 Os certificados ficam nos volumes nomeados `caddy_data` e `caddy_config` e sobrevivem a reinícios e a `docker compose down`. Não use `down -v` em produção: ele apaga também o banco (`postgres_data`) e os certificados.
 
 ### Testes locais em outras portas
@@ -70,7 +72,7 @@ Nesse modo, acesse direto `https://localhost:8443`. O redirecionamento automáti
 
 1. Registro DNS apontando para o IP da instância.
 2. Portas 80 e 443 abertas na security list da OCI e no firewall da instância.
-3. Fechar as portas 5174 e 8080 para a internet (não são mais usadas; o acesso passa a ser só pelo Caddy).
+3. Fechar a porta 8080 para a internet (o backend não é mais publicado; o acesso passa a ser só pelo Caddy). Manter a 5174 aberta: ela agora só redireciona o endereço antigo da demo para o domínio.
 4. `.env` do servidor com o domínio e as senhas (e `backend.env` com `SPRING_DATASOURCE_PASSWORD`, igual a `SMARTTRAFFIC_DB_PASSWORD`).
    - **Banco já existente:** `POSTGRES_PASSWORD` só vale na primeira criação do volume `postgres_data`. Se o volume do servidor já existe, a senha do `.env` precisa ser **igual à senha atual do banco**, ou deve ser trocada antes (`ALTER USER ... PASSWORD ...` dentro do banco). Se forem diferentes, o backend não autentica, fica `unhealthy` e o web não sobe.
    - `export.geojson`: o diretório e o arquivo precisam ser legíveis pelo uid `10001` do backend (`chmod 755` no diretório e `chmod 644` no arquivo). Se quiser importar as ruas, o `backend.env` precisa de `APP_STREETS_IMPORT_ENABLED=true` e `APP_STREETS_IMPORT_GEOJSON_PATH=/runtime-data/export.geojson`.
@@ -97,6 +99,7 @@ Variáveis principais:
 - `SMARTTRAFFIC_DATA_DIR`
 - `SMARTTRAFFIC_DOMAIN`
 - `SMARTTRAFFIC_WEB_HTTP_BIND` e `SMARTTRAFFIC_WEB_HTTPS_BIND`
+- `SMARTTRAFFIC_WEB_LEGACY_BIND` (porta do endereço antigo da demo, que só redireciona)
 - `SMARTTRAFFIC_CORS_ALLOWED_ORIGINS` (opcional)
 - `SMARTTRAFFIC_DB_USER`
 - `SMARTTRAFFIC_DB_PASSWORD` (obrigatória)

@@ -64,6 +64,8 @@ services:
     ports:
       - "${SMARTTRAFFIC_WEB_HTTP_BIND:-80}:80"
       - "${SMARTTRAFFIC_WEB_HTTPS_BIND:-443}:443"
+      # Endereço antigo da demo (porta 5174): só redireciona para o domínio.
+      - "${SMARTTRAFFIC_WEB_LEGACY_BIND:-5174}:5174"
     networks:
       - backend-network
     depends_on:

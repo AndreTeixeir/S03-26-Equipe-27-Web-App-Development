@@ -9,6 +9,14 @@
 	}
 }
 
+# Endereços antigos da demo: o IP do servidor (HTTP na porta 80) e a porta 5174 do antigo
+# servidor de desenvolvimento. Redirecionam para o domínio mantendo o caminho, para que links
+# já publicados continuem funcionando e todo acesso termine no HTTPS do domínio.
+# A validação do Let's Encrypt na porta 80 é atendida pelo Caddy antes destas regras.
+http://, http://:5174 {
+	redir https://{$SMARTTRAFFIC_DOMAIN:localhost}{uri}
+}
+
 # O domínio vem da variável SMARTTRAFFIC_DOMAIN. Sem ela o padrão é localhost,
 # para o qual o Caddy gera um certificado local (não confiável pelos navegadores).
 {$SMARTTRAFFIC_DOMAIN:localhost} {
