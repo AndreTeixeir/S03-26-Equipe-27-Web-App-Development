@@ -12,6 +12,8 @@ API REST do SmartTrafficFlow, desenvolvida em Spring Boot para processar e expor
 
 ## Execução local
 
+A senha do banco **não tem valor padrão**. Sem `SPRING_DATASOURCE_PASSWORD` a aplicação se recusa a subir (perfis padrão e `dev`). O Spring Boot não lê o arquivo `.env` sozinho: exporte as variáveis no terminal (`set -a && source .env && set +a`) ou cadastre-as na configuração de execução da IDE.
+
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
@@ -36,12 +38,13 @@ Variáveis importantes:
 
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
+- `SPRING_DATASOURCE_PASSWORD` (obrigatória, sem valor padrão)
 - `APP_CORS_ALLOWED_ORIGINS`
 - `APP_STREETS_IMPORT_ENABLED`
 - `APP_STREETS_IMPORT_GEOJSON_PATH`
 - `APP_RATE_LIMIT_SIMULATIONS_PER_MINUTE` (padrão `5`): requisições por minuto, por IP, em `POST /api/simulations/generate`
 - `APP_RATE_LIMIT_TRAFFIC_RECORDS_PER_MINUTE` (padrão `30`): requisições por minuto, por IP, em `POST /api/traffic-records`
+- `APP_CLIENT_IP_HEADER` (padrão vazio): cabeçalho com o IP real do cliente, usado pelo limite por IP quando há um proxy na frente da API. O Docker Compose define `X-Forwarded-For`. Fora dele deixe vazio, porque um cliente poderia forjar o cabeçalho para burlar o limite
 - `SPRINGDOC_ENABLED` (padrão `false`): publica `/swagger-ui.html` e `/v3/api-docs`; no perfil `dev` eles ficam sempre ligados
 
 ## Importação de GeoJSON na inicialização

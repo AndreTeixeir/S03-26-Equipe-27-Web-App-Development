@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${SMARTTRAFFIC_DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${SMARTTRAFFIC_DB_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${SMARTTRAFFIC_DB_PASSWORD:?Defina SMARTTRAFFIC_DB_PASSWORD no arquivo .env (veja infra/.env.example)}
       POSTGRES_DB: ${SMARTTRAFFIC_DB_NAME:-smarttrafficflow}
     ports:
       - "${SMARTTRAFFIC_DB_PORT_BIND:-127.0.0.1:5432}:5432"
@@ -26,48 +26,73 @@ services:
     restart: unless-stopped
     env_file:
       - ${SMARTTRAFFIC_BACKEND_ENV_FILE:-/opt/smarttrafficflow/env/backend.env}
-    ports:
-      - "8080:8080"
+    environment:
+      # Origem do navegador: o endereço https pelo qual o web (Caddy) é acessado.
+      # Em portas diferentes de 443, defina SMARTTRAFFIC_CORS_ALLOWED_ORIGINS com a porta.
+      APP_CORS_ALLOWED_ORIGINS: ${SMARTTRAFFIC_CORS_ALLOWED_ORIGINS:-https://${SMARTTRAFFIC_DOMAIN:-localhost}}
+      # O limite de requisições é por IP: sem isso todos os clientes apareceriam com o IP do web.
+      # Só é seguro porque o backend não publica porta e o Caddy sobrescreve o X-Forwarded-For recebido.
+      APP_CLIENT_IP_HEADER: X-Forwarded-For
+    # Sem "ports": o backend só é alcançado pelo web, dentro da rede do Compose.
     networks:
       - backend-network
     depends_on:
-      - smarttraffic-db
+      smarttraffic-db:
+        condition: service_healthy
+    # Sem actuator no projeto: o healthcheck consulta uma rota leve da API que passa pelo banco.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/api/traffic-records?page=0&size=1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    cap_drop:
+      - ALL
     volumes:
       - ${SMARTTRAFFIC_DATA_DIR:-/opt/smarttrafficflow/data}:/runtime-data:ro
 
-  smarttraffic-frontend:
-    image: node:20-alpine
-    container_name: smarttraffic-frontend
+  smarttraffic-web:
+    build:
+      context: ../frontend/latest-app
+      args:
+        # Lida no build. "/api" é relativo ao endereço do próprio web, que repassa ao backend.
+        VITE_API_BASE_URL: /api
+    container_name: smarttraffic-web
     restart: unless-stopped
-    working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    env_file:
-      - ${SMARTTRAFFIC_FRONTEND_ENV_FILE:-/opt/smarttrafficflow/env/frontend.env}
+    environment:
+      SMARTTRAFFIC_DOMAIN: ${SMARTTRAFFIC_DOMAIN:-localhost}
     ports:
-      - "5174:5174"
+      - "${SMARTTRAFFIC_WEB_HTTP_BIND:-80}:80"
+      - "${SMARTTRAFFIC_WEB_HTTPS_BIND:-443}:443"
     networks:
       - backend-network
     depends_on:
-      - smarttraffic-backend
+      smarttraffic-backend:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     volumes:
-      - ../frontend/latest-app:/app
-      - frontend_node_modules:/app/node_modules
+      - caddy_data:/data
+      - caddy_config:/config
 
   pgadmin:
-    image: dpage/pgadmin4
+    image: dpage/pgadmin4:9.18.0
     container_name: pgadmin-ui
     restart: unless-stopped
     profiles:
       - admin
     environment:
       PGADMIN_DEFAULT_EMAIL: ${SMARTTRAFFIC_PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${SMARTTRAFFIC_PGADMIN_PASSWORD:-password}
+      PGADMIN_DEFAULT_PASSWORD: ${SMARTTRAFFIC_PGADMIN_PASSWORD:?Defina SMARTTRAFFIC_PGADMIN_PASSWORD no arquivo .env (veja infra/.env.example)}
     ports:
       - "${SMARTTRAFFIC_PGADMIN_PORT_BIND:-127.0.0.1:8100}:80"
     networks:
       - backend-network
     depends_on:
-      - smarttraffic-db
+      smarttraffic-db:
+        condition: service_healthy
 
 networks:
   backend-network:
@@ -75,4 +100,5 @@ networks:
 
 volumes:
   postgres_data:
-  frontend_node_modules:
+  caddy_data:
+  caddy_config:

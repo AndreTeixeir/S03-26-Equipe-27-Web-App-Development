@@ -20,7 +20,7 @@ O deploy da stack completa é orquestrado via **Docker Compose**, subindo quatro
 |---|---|
 | `smarttraffic-db` | PostgreSQL + PostGIS (banco geoespacial) |
 | `smarttraffic-backend` | API Spring Boot |
-| `smarttraffic-frontend` | Aplicação web (Node/Vite) |
+| `smarttraffic-web` | Servidor web (Caddy): frontend, proxy de `/api` e HTTPS |
 | `pgadmin` | Interface de administração do banco |
 
 > Infraestrutura e deploy (provisionamento da instância OCI e configuração do Docker Compose): **André Teixeira**.
@@ -36,10 +36,22 @@ O deploy da stack completa é orquestrado via **Docker Compose**, subindo quatro
 
 ### 1. Backend
 
+O backend precisa de um PostgreSQL com PostGIS e **não tem senha padrão**: sem `SPRING_DATASOURCE_PASSWORD` a aplicação se recusa a subir, com uma mensagem apontando a variável que falta.
+
+O Spring Boot **não lê o arquivo `.env` sozinho**. Copie o exemplo, preencha os valores e exporte as variáveis no terminal (ou cadastre-as na configuração de execução da IDE, por exemplo no IntelliJ):
+
 ```bash
 cd backend
+cp .env.example .env
+# edite o .env: defina SPRING_DATASOURCE_PASSWORD e, fora do Docker,
+# troque o host de SPRING_DATASOURCE_URL para localhost
+set -a && source .env && set +a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
+
+> **Não rode `./mvnw test` nesse mesmo terminal.** Com `SPRING_DATASOURCE_URL` exportada, os testes deixam de usar o banco descartável (Testcontainers) e passam a apagar dados do banco apontado por ela. Rode os testes em outro terminal, sem as variáveis.
+
+A importação de ruas vem desligada no `.env.example` (`APP_STREETS_IMPORT_ENABLED=false`). Para ligá-la, aponte `APP_STREETS_IMPORT_GEOJSON_PATH` para um arquivo local.
 
 ### 2. Frontend
 
@@ -51,10 +63,15 @@ npm run dev
 
 ### 3. Infra com Docker Compose (opcional)
 
+Copie `infra/.env.example` para `infra/.env` e preencha as senhas (`SMARTTRAFFIC_DB_PASSWORD` e `SMARTTRAFFIC_PGADMIN_PASSWORD` são obrigatórias, sem valor padrão). Fora do servidor, aponte também `SMARTTRAFFIC_BACKEND_ENV_FILE` (por exemplo `../backend/.env`) e `SMARTTRAFFIC_DATA_DIR` (uma pasta local que exista) para caminhos locais; os valores do exemplo são os do servidor. Detalhes em `infra/README.md`.
+
 ```bash
 cd infra
+cp .env.example .env
 docker compose --env-file .env up -d --build
 ```
+
+Sem domínio configurado, o app abre em `https://localhost` com certificado local (o navegador avisa que não é confiável).
 
 Para subir também o pgAdmin:
 

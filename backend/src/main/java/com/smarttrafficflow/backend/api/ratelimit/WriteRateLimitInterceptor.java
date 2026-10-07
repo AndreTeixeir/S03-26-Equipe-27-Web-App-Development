@@ -22,9 +22,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Limits POST requests per client IP within fixed one-minute windows.
  * <p>
- * The client IP is the address of the TCP connection. {@code X-Forwarded-For} is ignored on purpose:
- * the API is published without a reverse proxy, so any client could forge that header to dodge the limit.
- * If a reverse proxy is ever placed in front of the API, the client IP resolution must be revisited.
+ * The client IP is {@code request.getRemoteAddr()}, and this class never reads {@code X-Forwarded-For}:
+ * when the API is reached directly, any client could forge that header to dodge the limit.
+ * Behind a reverse proxy (the web container) the server itself resolves the real client address, and only when
+ * {@code APP_CLIENT_IP_HEADER} is set (see {@code server.tomcat.remoteip} in application.yml). That is safe only
+ * while the proxy is the sole way to reach the API, as in the Compose file, where the backend publishes no port.
  * <p>
  * Counters live in memory, so each application instance enforces its own limit.
  */

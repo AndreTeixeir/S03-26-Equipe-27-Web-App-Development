@@ -2,7 +2,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/smarttrafficflow}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -15,6 +15,11 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    remoteip:
+      # Empty by default: the API is reached directly and X-Forwarded-For must not be trusted.
+      # Behind the web container (Caddy) the Compose file sets it to X-Forwarded-For.
+      remote-ip-header: ${APP_CLIENT_IP_HEADER:}
 
 springdoc:
   api-docs:
