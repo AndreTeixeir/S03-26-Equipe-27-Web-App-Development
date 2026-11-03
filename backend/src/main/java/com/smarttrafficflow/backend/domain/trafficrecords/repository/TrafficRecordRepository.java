@@ -93,6 +93,25 @@ public interface TrafficRecordRepository extends JpaRepository<TrafficRecord, UU
     )
     List<TrafficMapFeatureView> findMapFeaturesByRecordIds(@Param("ids") Collection<UUID> ids);
 
+    /** The map features of the {@code limit} most recent records ({@code timestamp} and {@code id} descending). */
+    @Query(
+            value = """
+                    SELECT
+                        tr.id AS recordId,
+                        s.id AS streetId,
+                        s.osm_way_id AS streetOsmWayId,
+                        s.name AS streetName,
+                        tr.vehicle_volume AS vehicleVolume,
+                        ST_AsGeoJSON(s.geom) AS geometry
+                    FROM traffic_records tr
+                    JOIN streets s ON s.id = tr.street_id
+                    ORDER BY tr.timestamp DESC, tr.id DESC
+                    LIMIT :limit
+                    """,
+            nativeQuery = true
+    )
+    List<TrafficMapFeatureView> findLatestMapFeatures(@Param("limit") int limit);
+
     interface TrafficMapFeatureView {
         UUID getRecordId();
 

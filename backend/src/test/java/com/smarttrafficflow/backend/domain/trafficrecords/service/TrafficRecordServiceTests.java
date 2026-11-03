@@ -222,6 +222,15 @@ class TrafficRecordServiceTests {
         verify(trafficRecordRepository).findMapFeaturesByRecordIds(recordIds);
     }
 
+    @Test
+    @DisplayName("delegates the most recent map features to the repository")
+    void delegatesTheLatestMapFeatureQuery() {
+        TrafficRecordRepository.TrafficMapFeatureView featureView = mock(TrafficRecordRepository.TrafficMapFeatureView.class);
+        when(trafficRecordRepository.findLatestMapFeatures(250)).thenReturn(List.of(featureView));
+
+        assertThat(trafficRecordService.findLatestMapFeatures(250)).containsExactly(featureView);
+    }
+
     private TrafficRecord entity(String roadType, int volume, String streetName, long streetOsmWayId) {
         TrafficRecord record = new TrafficRecord();
         record.setId(UUID.randomUUID());

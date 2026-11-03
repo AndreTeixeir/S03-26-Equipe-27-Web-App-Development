@@ -121,6 +121,10 @@ public class TrafficRecordService {
         return repository.findMapFeaturesByRecordIds(recordIds);
     }
 
+    public List<TrafficRecordRepository.TrafficMapFeatureView> findLatestMapFeatures(int limit) {
+        return repository.findLatestMapFeatures(limit);
+    }
+
     private String buildQueryPattern(String query) {
         if (query == null) {
             return null;

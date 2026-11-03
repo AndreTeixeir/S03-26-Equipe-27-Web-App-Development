@@ -37,7 +37,7 @@ class ExportServiceTests {
 
     @BeforeEach
     void setUp() {
-        exportService = new ExportService(trafficRecordService, new RecordLimits("3"));
+        exportService = new ExportService(trafficRecordService, new RecordLimits("3", "250"));
     }
 
     // ---- CSV format ----

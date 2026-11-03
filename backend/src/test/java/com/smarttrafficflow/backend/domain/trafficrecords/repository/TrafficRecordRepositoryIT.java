@@ -196,6 +196,20 @@ class TrafficRecordRepositoryIT {
         assertThat(geometry).isEqualTo(objectMapper.readTree(CENTRAL_GEOMETRY));
     }
 
+    @Test
+    @DisplayName("projects the map features of the most recent records, newest first, up to the limit")
+    void projectsTheLatestMapFeatures() {
+        List<TrafficRecordRepository.TrafficMapFeatureView> all = trafficRecordRepository.findLatestMapFeatures(10);
+        List<TrafficRecordRepository.TrafficMapFeatureView> latestTwo = trafficRecordRepository.findLatestMapFeatures(2);
+
+        assertThat(all).extracting(TrafficRecordRepository.TrafficMapFeatureView::getRecordId)
+                .containsExactly(floresRecordId, highwayRecordId, morningRecordId);
+        assertThat(latestTwo).extracting(TrafficRecordRepository.TrafficMapFeatureView::getRecordId)
+                .containsExactly(floresRecordId, highwayRecordId);
+        assertThat(all.get(0).getStreetName()).isEqualTo("Rua das Flores");
+        assertThat(all.get(0).getGeometry()).contains("LineString");
+    }
+
     private UUID insertStreet(long osmWayId, String name, String geometryJson) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(

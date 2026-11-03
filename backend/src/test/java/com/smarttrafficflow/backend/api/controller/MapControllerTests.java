@@ -2,8 +2,8 @@ package com.smarttrafficflow.backend.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smarttrafficflow.backend.api.exception.GlobalExceptionHandler;
+import com.smarttrafficflow.backend.domain.map.service.TrafficMapService;
 import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficRecordRepository;
-import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,16 +38,22 @@ class MapControllerTests {
     private ObjectMapper objectMapper;
 
     @MockitoBean
-    private TrafficRecordService trafficRecordService;
+    private TrafficMapService trafficMapService;
 
     @Test
-    @DisplayName("returns an empty feature collection when no record ids are selected")
-    void returnsEmptyFeatureCollectionWithoutSelectedRecordIds() throws Exception {
+    @DisplayName("returns an empty feature collection with its meta when the base has no records")
+    void returnsEmptyFeatureCollectionWithoutRecords() throws Exception {
+        when(trafficMapService.findContent(null))
+                .thenReturn(new TrafficMapService.MapContent(TrafficMapService.SCOPE_LATEST, 250, List.of()));
+
         mockMvc.perform(get("/api/traffic-map"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.type").value("FeatureCollection"))
                 .andExpect(jsonPath("$.features").isArray())
-                .andExpect(jsonPath("$.features").isEmpty());
+                .andExpect(jsonPath("$.features").isEmpty())
+                .andExpect(jsonPath("$.meta.scope").value("latest"))
+                .andExpect(jsonPath("$.meta.limit").value(250))
+                .andExpect(jsonPath("$.meta.count").value(0));
     }
 
     @Test
@@ -55,16 +61,11 @@ class MapControllerTests {
     void returnsMapFeaturesFromGetEndpoint() throws Exception {
         UUID recordId = UUID.randomUUID();
         UUID streetId = UUID.randomUUID();
-        TrafficRecordRepository.TrafficMapFeatureView featureView = mock(TrafficRecordRepository.TrafficMapFeatureView.class);
-        when(featureView.getRecordId()).thenReturn(recordId);
-        when(featureView.getStreetId()).thenReturn(streetId);
-        when(featureView.getStreetOsmWayId()).thenReturn(101L);
-        when(featureView.getStreetName()).thenReturn("Avenida Central");
-        when(featureView.getVehicleVolume()).thenReturn(220);
-        when(featureView.getGeometry()).thenReturn("""
+        TrafficRecordRepository.TrafficMapFeatureView featureView = view(recordId, streetId, 101L, "Avenida Central", 220,
+                """
                 {"type":"LineString","coordinates":[[-46.63,-23.55],[-46.62,-23.54]]}
                 """);
-        when(trafficRecordService.findMapFeaturesByRecordIds(List.of(recordId))).thenReturn(List.of(featureView));
+        when(trafficMapService.findContent(List.of(recordId))).thenReturn(selection(featureView));
 
         mockMvc.perform(get("/api/traffic-map")
                         .param("recordIds", recordId.toString()))
@@ -74,25 +75,23 @@ class MapControllerTests {
                 .andExpect(jsonPath("$.features[0].properties.streetName").value("Avenida Central"))
                 .andExpect(jsonPath("$.features[0].properties.trafficLevel").value("HIGH"))
                 .andExpect(jsonPath("$.features[0].properties.color").value("#E04545"))
-                .andExpect(jsonPath("$.features[0].geometry.type").value("LineString"));
+                .andExpect(jsonPath("$.features[0].geometry.type").value("LineString"))
+                .andExpect(jsonPath("$.meta.scope").value("selection"))
+                .andExpect(jsonPath("$.meta.limit").doesNotExist())
+                .andExpect(jsonPath("$.meta.count").value(1));
 
-        verify(trafficRecordService).findMapFeaturesByRecordIds(List.of(recordId));
+        verify(trafficMapService).findContent(List.of(recordId));
     }
 
     @Test
     @DisplayName("returns map features from the filter endpoint")
     void returnsMapFeaturesFromFilterEndpoint() throws Exception {
         UUID recordId = UUID.randomUUID();
-        TrafficRecordRepository.TrafficMapFeatureView featureView = mock(TrafficRecordRepository.TrafficMapFeatureView.class);
-        when(featureView.getRecordId()).thenReturn(recordId);
-        when(featureView.getStreetId()).thenReturn(UUID.randomUUID());
-        when(featureView.getStreetOsmWayId()).thenReturn(202L);
-        when(featureView.getStreetName()).thenReturn("Rua Um");
-        when(featureView.getVehicleVolume()).thenReturn(120);
-        when(featureView.getGeometry()).thenReturn("""
+        TrafficRecordRepository.TrafficMapFeatureView featureView = view(recordId, UUID.randomUUID(), 202L, "Rua Um", 120,
+                """
                 {"type":"LineString","coordinates":[[-46.61,-23.53],[-46.60,-23.52]]}
                 """);
-        when(trafficRecordService.findMapFeaturesByRecordIds(List.of(recordId))).thenReturn(List.of(featureView));
+        when(trafficMapService.findContent(List.of(recordId))).thenReturn(selection(featureView));
 
         mockMvc.perform(post("/api/traffic-map/filter")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -103,22 +102,52 @@ class MapControllerTests {
     }
 
     @Test
+    @DisplayName("shows the most recent records when the filter endpoint receives no ids")
+    void showsTheMostRecentRecordsFromTheFilterEndpointWithoutIds() throws Exception {
+        UUID recordId = UUID.randomUUID();
+        TrafficRecordRepository.TrafficMapFeatureView featureView = view(recordId, UUID.randomUUID(), 303L, "Rua Dois", 50,
+                """
+                {"type":"LineString","coordinates":[[-46.61,-23.53],[-46.60,-23.52]]}
+                """);
+        when(trafficMapService.findContent(null))
+                .thenReturn(new TrafficMapService.MapContent(TrafficMapService.SCOPE_LATEST, 250, List.of(featureView)));
+
+        mockMvc.perform(post("/api/traffic-map/filter").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.features[0].properties.trafficLevel").value("LOW"))
+                .andExpect(jsonPath("$.meta.scope").value("latest"))
+                .andExpect(jsonPath("$.meta.limit").value(250))
+                .andExpect(jsonPath("$.meta.count").value(1));
+    }
+
+    @Test
     @DisplayName("surfaces invalid street geometry as a bad request")
     void surfacesInvalidGeometryErrors() throws Exception {
         UUID recordId = UUID.randomUUID();
-        TrafficRecordRepository.TrafficMapFeatureView featureView = mock(TrafficRecordRepository.TrafficMapFeatureView.class);
-        when(featureView.getRecordId()).thenReturn(recordId);
-        when(featureView.getStreetId()).thenReturn(UUID.randomUUID());
-        when(featureView.getStreetOsmWayId()).thenReturn(303L);
-        when(featureView.getStreetName()).thenReturn("Rua Quebrada");
-        when(featureView.getVehicleVolume()).thenReturn(80);
-        when(featureView.getGeometry()).thenReturn("{not-json}");
-        when(trafficRecordService.findMapFeaturesByRecordIds(List.of(recordId))).thenReturn(List.of(featureView));
+        TrafficRecordRepository.TrafficMapFeatureView featureView =
+                view(recordId, UUID.randomUUID(), 303L, "Rua Quebrada", 80, "{not-json}");
+        when(trafficMapService.findContent(List.of(recordId))).thenReturn(selection(featureView));
 
         mockMvc.perform(get("/api/traffic-map")
                         .param("recordIds", recordId.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_ARGUMENT"))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Geometria invalida")));
+    }
+
+    private static TrafficMapService.MapContent selection(TrafficRecordRepository.TrafficMapFeatureView view) {
+        return new TrafficMapService.MapContent(TrafficMapService.SCOPE_SELECTION, null, List.of(view));
+    }
+
+    private static TrafficRecordRepository.TrafficMapFeatureView view(
+            UUID recordId, UUID streetId, long osmWayId, String streetName, int volume, String geometry) {
+        TrafficRecordRepository.TrafficMapFeatureView view = mock(TrafficRecordRepository.TrafficMapFeatureView.class);
+        when(view.getRecordId()).thenReturn(recordId);
+        when(view.getStreetId()).thenReturn(streetId);
+        when(view.getStreetOsmWayId()).thenReturn(osmWayId);
+        when(view.getStreetName()).thenReturn(streetName);
+        when(view.getVehicleVolume()).thenReturn(volume);
+        when(view.getGeometry()).thenReturn(geometry);
+        return view;
     }
 }
