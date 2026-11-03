@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (Maven unit and integration tests)
+    name: Backend (Maven tests)
     runs-on: ubuntu-latest
     defaults:
       run:
