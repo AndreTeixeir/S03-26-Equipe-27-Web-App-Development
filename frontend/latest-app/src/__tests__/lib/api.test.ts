@@ -165,13 +165,31 @@ describe("api client", () => {
     expect(summary.totalVehicleVolume).toBe(120);
   });
 
-  it("returns an empty feature collection when no record ids are passed", async () => {
-    await expect(getTrafficMap([])).resolves.toEqual({ type: "FeatureCollection", features: [] });
+  it("loads the most recent records for the map using GET when no record ids are passed", async () => {
+    const mapData = await getTrafficMap([]);
+
+    expect(mapData.meta).toEqual({ scope: "latest", limit: 250, count: 1 });
+    expect(mapData.features[0]?.properties.streetName).toBe("Avenida Central");
+  });
+
+  it("asks the backend for the latest records instead of answering an empty map locally", async () => {
+    let requested = "";
+    server.use(
+      http.get(`${BASE}/traffic-map`, ({ request }) => {
+        requested = `${request.method} ${new URL(request.url).pathname}`;
+        return HttpResponse.json({ type: "FeatureCollection", features: [] });
+      })
+    );
+
+    await getTrafficMap([]);
+
+    expect(requested).toBe("GET /api/traffic-map");
   });
 
   it("loads filtered map data using POST", async () => {
     const mapData = await getTrafficMap(["rec-1"]);
     expect(mapData.features[0]?.properties.streetName).toBe("Avenida Central");
+    expect(mapData.meta?.scope).toBe("selection");
   });
 
   it("searches streets", async () => {

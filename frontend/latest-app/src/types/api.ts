@@ -68,9 +68,17 @@ export interface MapPoint {
   };
 }
 
+/** What the map shows: the most recent records up to a ceiling, or the selection (which has no ceiling). */
+export interface MapMeta {
+  scope: "latest" | "selection";
+  limit: number | null;
+  count: number;
+}
+
 export interface MapFeatureCollection {
   type: "FeatureCollection";
   features: MapPoint[];
+  meta?: MapMeta;
 }
 
 export interface StreetOption {

@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import type { ReactNode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,11 +8,15 @@ import { server } from "../mocks/server";
 import { mockSummary } from "../mocks/handlers";
 import type { PagedResponse, TrafficRecord, TrafficRecordSummary } from "../../types/api";
 
+// Stands in for the Leaflet map instance, to check how the map is framed.
+const mapProbe = vi.hoisted(() => ({ fitBounds: vi.fn() }));
+
 vi.mock("react-leaflet", () => ({
   MapContainer: ({ children }: { children: ReactNode }) => <div data-testid="map-container">{children}</div>,
   TileLayer: () => <div data-testid="tile-layer" />,
   Polyline: ({ children }: { children: ReactNode }) => <div data-testid="map-polyline">{children}</div>,
-  Popup: ({ children }: { children: ReactNode }) => <div>{children}</div>
+  Popup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  useMap: () => ({ fitBounds: mapProbe.fitBounds })
 }));
 
 // The props each chart's y axis was rendered with, to check how its numbers are shown.
@@ -42,6 +46,7 @@ describe("App", () => {
   beforeEach(() => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    mapProbe.fitBounds.mockClear();
   });
 
   it("renders the dashboard and connection state", async () => {
@@ -285,8 +290,10 @@ describe("App", () => {
     const filterInput = await screen.findByRole("searchbox", { name: /Filtro/i });
     await user.type(filterInput, "Rodovia Norte");
 
-    expect(await screen.findByText(/Rodovia Norte/i)).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText(/Avenida Central/i)).not.toBeInTheDocument());
+    // The map also names streets now, so look only inside the table.
+    const table = screen.getByRole("table");
+    expect(await within(table).findByText(/Rodovia Norte/i)).toBeInTheDocument();
+    await waitFor(() => expect(within(table).queryByText(/Avenida Central/i)).not.toBeInTheDocument());
   });
 
   it("shows an empty-state row when the table filter matches nothing", async () => {
@@ -612,6 +619,131 @@ describe("App", () => {
     expect(screen.queryByText(/Página 2 de 2/i)).not.toBeInTheDocument();
   });
 
+  describe("map", () => {
+    const farAwayFeature = {
+      type: "Feature" as const,
+      properties: {
+        recordId: "rec-2",
+        streetId: "street-2",
+        streetOsmWayId: 202,
+        streetName: "Rodovia Norte",
+        vehicleVolume: 250,
+        trafficLevel: "HIGH" as const,
+        color: "#e04545"
+      },
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [-46.9, -23.1],
+          [-46.8, -23.2]
+        ] as [number, number][]
+      }
+    };
+
+    it("frames the map on the streets it shows", async () => {
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      await waitFor(() =>
+        expect(mapProbe.fitBounds).toHaveBeenCalledWith(
+          [
+            [-23.5505, -46.6333],
+            [-23.5512, -46.6321]
+          ],
+          expect.objectContaining({ padding: [24, 24] })
+        )
+      );
+    });
+
+    it("frames the map again when the selection changes the data", async () => {
+      const user = userEvent.setup();
+      server.use(
+        http.post("http://localhost:8080/api/traffic-map/filter", () =>
+          HttpResponse.json({
+            type: "FeatureCollection",
+            features: [farAwayFeature],
+            meta: { scope: "selection", limit: null, count: 1 }
+          })
+        )
+      );
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+      await user.click(await screen.findByLabelText(/Selecionar registro rec-2/i));
+      mapProbe.fitBounds.mockClear();
+      await user.click(screen.getByRole("button", { name: /Aplicar seleção/i }));
+
+      await waitFor(() =>
+        expect(mapProbe.fitBounds).toHaveBeenLastCalledWith(
+          [
+            [-23.1, -46.9],
+            [-23.2, -46.8]
+          ],
+          expect.objectContaining({ padding: [24, 24] })
+        )
+      );
+    });
+
+    it("does not frame anything when there is nothing to show", async () => {
+      server.use(
+        http.get("http://localhost:8080/api/traffic-map", () =>
+          HttpResponse.json({
+            type: "FeatureCollection",
+            features: [],
+            meta: { scope: "latest", limit: 250, count: 0 }
+          })
+        )
+      );
+
+      render(<App />);
+
+      expect(await screen.findByText(/Ainda não há registros para plotar no mapa/i)).toBeInTheDocument();
+      expect(mapProbe.fitBounds).not.toHaveBeenCalled();
+    });
+
+    it("tells that the map shows the most recent records when nothing is selected", async () => {
+      server.use(
+        http.get("http://localhost:8080/api/traffic-map", () =>
+          HttpResponse.json({
+            type: "FeatureCollection",
+            features: [farAwayFeature],
+            meta: { scope: "latest", limit: 250, count: 250 }
+          })
+        )
+      );
+
+      render(<App />);
+
+      expect(await screen.findByText("Mostrando os 250 registros mais recentes")).toBeInTheDocument();
+    });
+
+    it("tells how many selected records the map shows", async () => {
+      const user = userEvent.setup();
+      server.use(
+        http.post("http://localhost:8080/api/traffic-map/filter", () =>
+          HttpResponse.json({
+            type: "FeatureCollection",
+            features: [farAwayFeature],
+            meta: { scope: "selection", limit: null, count: 2 }
+          })
+        )
+      );
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+      await user.click(await screen.findByLabelText(/Selecionar registro rec-1/i));
+      await user.click(screen.getByRole("button", { name: /Aplicar seleção/i }));
+
+      expect(await screen.findByText("Mostrando 2 registros selecionados")).toBeInTheDocument();
+    });
+
+    it("uses the singular when the map shows a single record", async () => {
+      render(<App />);
+
+      expect(await screen.findByText("Mostrando o registro mais recente")).toBeInTheDocument();
+    });
+  });
+
   describe("when the page opens", () => {
     // Records every API request and lets it continue to the regular handlers (a handler that returns nothing
     // passes the request on). A request counts as completed when it was not cancelled by the page.
@@ -646,6 +778,7 @@ describe("App", () => {
         "GET /api/traffic-stats?groupBy=weekday": 1,
         "GET /api/traffic-stats?groupBy=roadType": 1,
         "GET /api/traffic-insights": 1,
+        "GET /api/traffic-map": 1,
         "GET /api/traffic-records?page=0&size=20": 1
       });
     });

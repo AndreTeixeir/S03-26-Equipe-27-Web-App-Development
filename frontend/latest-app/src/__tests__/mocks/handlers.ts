@@ -183,12 +183,24 @@ export const handlers = [
     }
     return HttpResponse.json(mockInsights);
   }),
+  http.get(`${BASE}/traffic-map`, () =>
+    HttpResponse.json({
+      ...mockMapData,
+      meta: { scope: "latest", limit: 250, count: mockMapData.features.length }
+    } satisfies MapFeatureCollection)
+  ),
   http.post(`${BASE}/traffic-map/filter`, async ({ request }) => {
     const body = (await request.json()) as { recordIds?: string[] };
     if (!body.recordIds?.length) {
-      return HttpResponse.json({ type: "FeatureCollection", features: [] });
+      return HttpResponse.json({
+        ...mockMapData,
+        meta: { scope: "latest", limit: 250, count: mockMapData.features.length }
+      } satisfies MapFeatureCollection);
     }
-    return HttpResponse.json(mockMapData);
+    return HttpResponse.json({
+      ...mockMapData,
+      meta: { scope: "selection", limit: null, count: mockMapData.features.length }
+    } satisfies MapFeatureCollection);
   }),
   http.get(`${BASE}/streets/search`, ({ request }) => {
     const query = new URL(request.url).searchParams.get("q")?.toLowerCase() ?? "";

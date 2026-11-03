@@ -131,7 +131,8 @@ export function generateSimulation(payload: SimulationRequest) {
 
 export function getTrafficMap(recordIds: string[], options?: RequestOptions) {
   if (recordIds.length === 0) {
-    return Promise.resolve<MapFeatureCollection>({ type: "FeatureCollection", features: [] });
+    // Without a selection the backend answers with the most recent records, up to its ceiling.
+    return request<MapFeatureCollection>("/traffic-map", { ...options });
   }
 
   return request<MapFeatureCollection>("/traffic-map/filter", {

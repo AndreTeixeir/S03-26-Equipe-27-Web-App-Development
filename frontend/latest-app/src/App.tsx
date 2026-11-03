@@ -1,7 +1,7 @@
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
   API_BASE_URL,
   ApiError,
@@ -261,7 +261,37 @@ function getMapCenter(mapData: MapFeatureCollection): [number, number] {
   return [lat, lng];
 }
 
+/** What the map shows, in a sentence: the most recent records, or the selected ones. */
+function describeMapContent(mapData: MapFeatureCollection): string | null {
+  const meta = mapData.meta;
+  if (!meta) {
+    return null;
+  }
+
+  const count = meta.count.toLocaleString("pt-BR");
+  if (meta.scope === "latest") {
+    return meta.count === 1 ? "Mostrando o registro mais recente" : `Mostrando os ${count} registros mais recentes`;
+  }
+  return meta.count === 1 ? "Mostrando 1 registro selecionado" : `Mostrando ${count} registros selecionados`;
+}
+
+// The map keeps the view it was created with, so it must be told to frame the new streets when the data changes.
+function FitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length > 0) {
+      map.fitBounds(positions, { padding: [24, 24], maxZoom: 16 });
+    }
+  }, [map, positions]);
+
+  return null;
+}
+
 function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardProps) {
+  const positions = useMemo(() => mapData.features.flatMap(toLeafletPositions), [mapData]);
+  const legend = describeMapContent(mapData);
+
   return (
     <section className="card map-card reveal reveal-4">
       <div className="section-heading">
@@ -272,11 +302,13 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
         <p className="map-empty">{emptyText}</p>
       ) : (
         <div className="map-shell">
+          {legend ? <p className="map-legend">{legend}</p> : null}
           <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={true}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+            <FitBounds positions={positions} />
             {mapData.features.map((point) => (
               <Polyline
                 key={`${point.properties.recordId}-${point.properties.streetId}`}
@@ -780,7 +812,7 @@ export default function App() {
               eyebrow="Visão da rede"
               title="Monitor do mapa de tráfego"
               mapData={dashboard.mapData}
-              emptyText="Selecione registros em “Formulários e registros” para visualizar as ruas coloridas."
+              emptyText="Ainda não há registros para plotar no mapa."
             />
 
             <section className="card insight-card reveal reveal-4">
@@ -979,9 +1011,9 @@ export default function App() {
 
             <TrafficMapCard
               eyebrow="Mapa operacional"
-              title="Ruas selecionadas"
+              title="Ruas no mapa"
               mapData={dashboard.mapData}
-              emptyText="Selecione registros abaixo para plotar as ruas nesta visão e também na página de insights."
+              emptyText="Ainda não há registros para plotar no mapa."
             />
 
             <section className="card table-card reveal reveal-5">
