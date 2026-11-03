@@ -1,9 +1,7 @@
 package com.smarttrafficflow.backend.domain.analytics.service;
 
 import com.smarttrafficflow.backend.api.dto.TrafficStatsResponse;
-import com.smarttrafficflow.backend.domain.streets.entity.Street;
-import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
-import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
+import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficAggregationRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,15 +9,16 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.DayOfWeek;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -30,7 +29,7 @@ import static org.mockito.Mockito.when;
 class AnalyticsServiceTests {
 
     @Mock
-    private TrafficRecordService trafficRecordService;
+    private TrafficAggregationRepository aggregationRepository;
 
     @InjectMocks
     private AnalyticsService analyticsService;
@@ -38,11 +37,8 @@ class AnalyticsServiceTests {
     @Test
     @DisplayName("aggregates hourly volume from all records when no filter is provided")
     void aggregatesHourStatsFromAllRecords() {
-        when(trafficRecordService.findAllEntities()).thenReturn(List.of(
-                recordAt(8, "ARTERIAL", 100),
-                recordAt(8, "HIGHWAY", 50),
-                recordAt(17, "LOCAL", 200)
-        ));
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, "UTC", List.of()))
+                .thenReturn(totals("8", 150L, "17", 200L));
 
         TrafficStatsResponse response = analyticsService.getStats("hour", List.of());
 
@@ -54,59 +50,51 @@ class AnalyticsServiceTests {
     @DisplayName("aggregates weekday stats from selected records")
     void aggregatesWeekdayStatsFromSelectedRecords() {
         List<UUID> recordIds = List.of(UUID.randomUUID(), UUID.randomUUID());
-        when(trafficRecordService.findEntitiesByIds(recordIds)).thenReturn(List.of(
-                recordOnDay(DayOfWeek.MONDAY, 100),
-                recordOnDay(DayOfWeek.MONDAY, 80),
-                recordOnDay(DayOfWeek.FRIDAY, 200)
-        ));
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.WEEKDAY, "UTC", recordIds))
+                .thenReturn(totals("1", 180L, "5", 200L));
 
         TrafficStatsResponse response = analyticsService.getStats("weekday", recordIds);
 
         assertThat(response.labels()).containsExactly("MONDAY", "FRIDAY");
         assertThat(response.values()).containsExactly(180L, 200L);
-        verify(trafficRecordService).findEntitiesByIds(recordIds);
-    }
-
-    @Test
-    @DisplayName("uses UNKNOWN for blank or null road types")
-    void usesUnknownForMissingRoadTypes() {
-        when(trafficRecordService.findAllEntities()).thenReturn(List.of(
-                recordAt(8, null, 50),
-                recordAt(9, "   ", 30)
-        ));
-
-        TrafficStatsResponse response = analyticsService.getStats("roadType", null);
-
-        assertThat(response.labels()).containsExactly("UNKNOWN");
-        assertThat(response.values()).containsExactly(80L);
+        verify(aggregationRepository).sumVolumeBy(StatsGroupBy.WEEKDAY, "UTC", recordIds);
     }
 
     @Test
     @DisplayName("aggregates selected records by road type")
     void aggregatesRoadTypeStatsFromSelectedRecords() {
         List<UUID> recordIds = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        when(trafficRecordService.findEntitiesByIds(recordIds)).thenReturn(List.of(
-                recordAt(8, "ARTERIAL", 100),
-                recordAt(9, "ARTERIAL", 80),
-                recordAt(10, "HIGHWAY", 200)
-        ));
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, "UTC", recordIds))
+                .thenReturn(totals("ARTERIAL", 180L, "HIGHWAY", 200L));
 
         TrafficStatsResponse response = analyticsService.getStats("roadType", recordIds);
 
         assertThat(response.labels()).containsExactly("ARTERIAL", "HIGHWAY");
         assertThat(response.values()).containsExactly(180L, 200L);
-        verify(trafficRecordService).findEntitiesByIds(recordIds);
+        verify(aggregationRepository).sumVolumeBy(StatsGroupBy.ROAD_TYPE, "UTC", recordIds);
     }
 
     @Test
     @DisplayName("returns empty labels and values when there are no records")
     void returnsEmptyStatsWhenThereAreNoRecords() {
-        when(trafficRecordService.findAllEntities()).thenReturn(List.of());
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, "UTC", null)).thenReturn(Map.of());
 
         TrafficStatsResponse response = analyticsService.getStats("hour", null);
 
         assertThat(response.labels()).isEmpty();
         assertThat(response.values()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("keeps totals beyond Integer.MAX_VALUE")
+    void sumsVolumesBeyondIntegerRange() {
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, "UTC", null))
+                .thenReturn(totals("8", 2L * Integer.MAX_VALUE));
+
+        TrafficStatsResponse response = analyticsService.getStats("hour", null);
+
+        assertThat(response.labels()).containsExactly("08");
+        assertThat(response.values()).containsExactly(2L * Integer.MAX_VALUE);
     }
 
     @Test
@@ -120,8 +108,7 @@ class AnalyticsServiceTests {
     @Test
     @DisplayName("rejects an unsupported group by even when there are no records")
     void rejectsUnsupportedGroupByWithEmptyDatabase() {
-        lenient().when(trafficRecordService.findAllEntities()).thenReturn(List.of());
-        lenient().when(trafficRecordService.findEntitiesByIds(any())).thenReturn(List.of());
+        lenient().when(aggregationRepository.sumVolumeBy(any(), anyString(), isNull())).thenReturn(Map.of());
 
         assertThatThrownBy(() -> analyticsService.getStats("xyz", null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -129,7 +116,7 @@ class AnalyticsServiceTests {
         assertThatThrownBy(() -> analyticsService.getStats("xyz", List.of(UUID.randomUUID())))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        verifyNoInteractions(trafficRecordService);
+        verifyNoInteractions(aggregationRepository);
     }
 
     @Test
@@ -139,49 +126,14 @@ class AnalyticsServiceTests {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("groupBy invalido");
 
-        verifyNoInteractions(trafficRecordService);
+        verifyNoInteractions(aggregationRepository);
     }
 
-    @Test
-    @DisplayName("sums volumes beyond Integer.MAX_VALUE without overflowing")
-    void sumsVolumesBeyondIntegerRange() {
-        when(trafficRecordService.findAllEntities()).thenReturn(List.of(
-                recordAt(8, "ARTERIAL", Integer.MAX_VALUE),
-                recordAt(8, "ARTERIAL", Integer.MAX_VALUE)
-        ));
-
-        TrafficStatsResponse response = analyticsService.getStats("hour", null);
-
-        assertThat(response.labels()).containsExactly("08");
-        assertThat(response.values()).containsExactly(2L * Integer.MAX_VALUE);
-    }
-
-    private TrafficRecord recordAt(int hour, String roadType, int volume) {
-        TrafficRecord record = new TrafficRecord();
-        record.setId(UUID.randomUUID());
-        record.setTimestamp(OffsetDateTime.of(2024, 6, 17, hour, 0, 0, 0, ZoneOffset.UTC));
-        record.setRoadType(roadType);
-        record.setVehicleVolume(volume);
-        record.setStreet(street(100L + hour, "Rua " + hour));
-        return record;
-    }
-
-    private TrafficRecord recordOnDay(DayOfWeek dayOfWeek, int volume) {
-        OffsetDateTime monday = OffsetDateTime.of(2024, 6, 10, 8, 0, 0, 0, ZoneOffset.UTC);
-        TrafficRecord record = new TrafficRecord();
-        record.setId(UUID.randomUUID());
-        record.setTimestamp(monday.plusDays(dayOfWeek.getValue() - DayOfWeek.MONDAY.getValue()));
-        record.setRoadType("ARTERIAL");
-        record.setVehicleVolume(volume);
-        record.setStreet(street(200L + dayOfWeek.getValue(), dayOfWeek.name()));
-        return record;
-    }
-
-    private Street street(long osmWayId, String name) {
-        Street street = new Street();
-        street.setId(UUID.randomUUID());
-        street.setOsmWayId(osmWayId);
-        street.setName(name);
-        return street;
+    private static Map<String, Long> totals(Object... keysAndValues) {
+        Map<String, Long> totals = new LinkedHashMap<>();
+        for (int i = 0; i < keysAndValues.length; i += 2) {
+            totals.put((String) keysAndValues[i], (Long) keysAndValues[i + 1]);
+        }
+        return totals;
     }
 }

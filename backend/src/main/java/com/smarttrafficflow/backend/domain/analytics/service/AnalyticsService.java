@@ -1,15 +1,13 @@
 package com.smarttrafficflow.backend.domain.analytics.service;
 
 import com.smarttrafficflow.backend.api.dto.TrafficStatsResponse;
-import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
-import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
+import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficAggregationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,39 +17,34 @@ public class AnalyticsService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsService.class);
 
-    private final TrafficRecordService trafficRecordService;
+    /** Time zone in which hours and weekdays are observed. */
+    private static final String ZONE = "UTC";
 
-    public AnalyticsService(TrafficRecordService trafficRecordService) {
-        this.trafficRecordService = trafficRecordService;
+    private final TrafficAggregationRepository aggregationRepository;
+
+    public AnalyticsService(TrafficAggregationRepository aggregationRepository) {
+        this.aggregationRepository = aggregationRepository;
     }
 
     public TrafficStatsResponse getStats(String groupBy, List<UUID> recordIds) {
         StatsGroupBy dimension = StatsGroupBy.parse(groupBy);
-        List<TrafficRecord> records = (recordIds == null || recordIds.isEmpty())
-                ? trafficRecordService.findAllEntities()
-                : trafficRecordService.findEntitiesByIds(recordIds);
-        log.info("Analytics requested with groupBy={} using {} records", groupBy, records.size());
-        Map<String, Long> aggregated = new LinkedHashMap<>();
+        Map<String, Long> totals = aggregationRepository.sumVolumeBy(dimension, ZONE, recordIds);
+        log.info("Analytics requested with groupBy={} produced {} buckets", groupBy, totals.size());
 
-        for (TrafficRecord record : records) {
-            String key = switch (dimension) {
-                case HOUR -> String.format("%02d", record.getTimestamp().getHour());
-                case WEEKDAY -> normalizeWeekday(record.getTimestamp().getDayOfWeek());
-                case ROAD_TYPE -> safeValue(record.getRoadType(), "UNKNOWN");
-            };
-
-            aggregated.merge(key, record.getVehicleVolume().longValue(), Long::sum);
-        }
-
-        log.info("Analytics generated {} buckets for groupBy={}", aggregated.size(), groupBy);
-        return new TrafficStatsResponse(new ArrayList<>(aggregated.keySet()), new ArrayList<>(aggregated.values()));
+        List<String> labels = new ArrayList<>();
+        List<Long> values = new ArrayList<>();
+        totals.forEach((bucket, total) -> {
+            labels.add(toLabel(dimension, bucket));
+            values.add(total);
+        });
+        return new TrafficStatsResponse(labels, values);
     }
 
-    private String normalizeWeekday(DayOfWeek dayOfWeek) {
-        return dayOfWeek.name();
-    }
-
-    private String safeValue(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
+    private String toLabel(StatsGroupBy dimension, String bucket) {
+        return switch (dimension) {
+            case HOUR -> String.format("%02d", Integer.parseInt(bucket));
+            case WEEKDAY -> DayOfWeek.of(Integer.parseInt(bucket)).name();
+            case ROAD_TYPE -> bucket;
+        };
     }
 }
