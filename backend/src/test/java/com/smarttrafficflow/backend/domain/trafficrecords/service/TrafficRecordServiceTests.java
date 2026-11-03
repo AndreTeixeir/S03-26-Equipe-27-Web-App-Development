@@ -75,18 +75,48 @@ class TrafficRecordServiceTests {
     }
 
     @Test
-    @DisplayName("maps all street-based fields when reading all records")
-    void mapsStreetBasedFieldsWhenFindingAllRecords() {
-        when(trafficRecordRepository.findAllWithStreet()).thenReturn(List.of(
+    @DisplayName("maps all street-based fields when reading the most recent records")
+    void mapsStreetBasedFieldsWhenFindingTheLatestRecords() {
+        when(trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2))).thenReturn(List.of(
                 entity("ARTERIAL", 120, "Avenida Central", 101L),
                 entity("HIGHWAY", 250, "Rodovia Norte", 202L)
         ));
 
-        List<TrafficRecordResponse> records = trafficRecordService.findAll();
+        List<TrafficRecordResponse> records = trafficRecordService.findLatest(2);
 
         assertThat(records).hasSize(2);
         assertThat(records.get(0).streetName()).isEqualTo("Avenida Central");
         assertThat(records.get(1).streetOsmWayId()).isEqualTo(202L);
+    }
+
+    @Test
+    @DisplayName("maps the records found by id and keeps the repository order")
+    void mapsTheRecordsFoundById() {
+        List<UUID> recordIds = List.of(UUID.randomUUID(), UUID.randomUUID());
+        when(trafficRecordRepository.findAllByIdInWithStreet(recordIds)).thenReturn(List.of(
+                entity("LOCAL", 80, "Rua Um", 303L),
+                entity("HIGHWAY", 250, "Rodovia Norte", 202L)
+        ));
+
+        List<TrafficRecordResponse> records = trafficRecordService.findByIds(recordIds);
+
+        assertThat(records).extracting(TrafficRecordResponse::streetName).containsExactly("Rua Um", "Rodovia Norte");
+    }
+
+    @Test
+    @DisplayName("does not query the repository when no ids are provided")
+    void doesNotQueryWithoutIds() {
+        assertThat(trafficRecordService.findByIds(List.of())).isEmpty();
+        assertThat(trafficRecordService.findByIds(null)).isEmpty();
+        verify(trafficRecordRepository, never()).findAllByIdInWithStreet(any());
+    }
+
+    @Test
+    @DisplayName("counts every stored record")
+    void countsEveryStoredRecord() {
+        when(trafficRecordRepository.count()).thenReturn(12_345L);
+
+        assertThat(trafficRecordService.countAll()).isEqualTo(12_345L);
     }
 
     @Test

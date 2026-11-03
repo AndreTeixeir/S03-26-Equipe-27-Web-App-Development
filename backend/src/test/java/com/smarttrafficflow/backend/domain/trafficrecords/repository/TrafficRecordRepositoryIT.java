@@ -72,14 +72,31 @@ class TrafficRecordRepositoryIT {
     }
 
     @Test
-    @DisplayName("loads every record with its street")
-    void loadsAllRecordsWithStreet() {
-        List<TrafficRecord> records = trafficRecordRepository.findAllWithStreet();
+    @DisplayName("loads the most recent records with their streets, newest first, up to the page size")
+    void loadsTheMostRecentRecordsWithStreet() {
+        List<TrafficRecord> all = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 10));
+        List<TrafficRecord> latestTwo = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2));
 
-        assertThat(records).extracting(TrafficRecord::getId)
-                .containsExactlyInAnyOrder(morningRecordId, highwayRecordId, floresRecordId);
-        assertThat(records).extracting(record -> record.getStreet().getName())
-                .containsExactlyInAnyOrder("Avenida Central", "Avenida Central", "Rua das Flores");
+        assertThat(all).extracting(TrafficRecord::getId)
+                .containsExactly(floresRecordId, highwayRecordId, morningRecordId);
+        assertThat(all).extracting(record -> record.getStreet().getName())
+                .containsExactly("Rua das Flores", "Avenida Central", "Avenida Central");
+        assertThat(latestTwo).extracting(TrafficRecord::getId).containsExactly(floresRecordId, highwayRecordId);
+    }
+
+    @Test
+    @DisplayName("breaks timestamp ties by id, descending, so the cut is stable")
+    void breaksTimestampTiesById() {
+        UUID first = saveRecord(centralId, "2025-01-01T00:00:00Z", "LOCAL", 1, null, null);
+        UUID second = saveRecord(centralId, "2025-01-01T00:00:00Z", "LOCAL", 1, null, null);
+        entityManager.flush();
+        entityManager.clear();
+
+        List<TrafficRecord> latest = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2));
+
+        UUID expectedFirst = first.compareTo(second) > 0 ? first : second;
+        UUID expectedSecond = first.compareTo(second) > 0 ? second : first;
+        assertThat(latest).extracting(TrafficRecord::getId).containsExactly(expectedFirst, expectedSecond);
     }
 
     @Test
@@ -119,9 +136,9 @@ class TrafficRecordRepositoryIT {
                 List.of(morningRecordId, floresRecordId));
 
         assertThat(records).extracting(TrafficRecord::getId)
-                .containsExactlyInAnyOrder(morningRecordId, floresRecordId);
+                .containsExactly(floresRecordId, morningRecordId);
         assertThat(records).extracting(record -> record.getStreet().getName())
-                .containsExactlyInAnyOrder("Avenida Central", "Rua das Flores");
+                .containsExactly("Rua das Flores", "Avenida Central");
     }
 
     @Test

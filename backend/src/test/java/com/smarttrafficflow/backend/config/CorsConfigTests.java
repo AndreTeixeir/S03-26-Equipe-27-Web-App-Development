@@ -13,6 +13,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -42,6 +43,17 @@ class CorsConfigTests {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
                 .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS));
+    }
+
+    @Test
+    @DisplayName("exposes the export totals and the file name to pages served from another origin")
+    void exposesTheExportHeaders() throws Exception {
+        mockMvc.perform(get("/api/streets/search").header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                        org.hamcrest.Matchers.allOf(
+                                org.hamcrest.Matchers.containsString("X-Total-Records"),
+                                org.hamcrest.Matchers.containsString("X-Exported-Records"),
+                                org.hamcrest.Matchers.containsString("Content-Disposition"))));
     }
 
     @Test

@@ -14,8 +14,9 @@ import java.util.UUID;
 
 public interface TrafficRecordRepository extends JpaRepository<TrafficRecord, UUID> {
 
-    @Query("select tr from TrafficRecord tr join fetch tr.street")
-    List<TrafficRecord> findAllWithStreet();
+    /** The most recent records first ({@code timestamp} and {@code id} descending), as many as the page asks. */
+    @Query("select tr from TrafficRecord tr join fetch tr.street order by tr.timestamp desc, tr.id desc")
+    List<TrafficRecord> findLatestWithStreet(Pageable pageable);
 
     @Query(
             value = """
@@ -45,7 +46,11 @@ public interface TrafficRecordRepository extends JpaRepository<TrafficRecord, UU
     )
     Page<TrafficRecord> findPageWithStreet(@Param("queryPattern") String queryPattern, Pageable pageable);
 
-    @Query("select tr from TrafficRecord tr join fetch tr.street where tr.id in :ids")
+    @Query("""
+            select tr from TrafficRecord tr join fetch tr.street
+            where tr.id in :ids
+            order by tr.timestamp desc, tr.id desc
+            """)
     List<TrafficRecord> findAllByIdInWithStreet(@Param("ids") Collection<UUID> ids);
 
     @Query("""

@@ -49,10 +49,29 @@ public class TrafficRecordService {
         return toResponse(saved);
     }
 
-    public List<TrafficRecordResponse> findAll() {
-        List<TrafficRecordResponse> records = repository.findAllWithStreet().stream().map(this::toResponse).toList();
-        log.debug("TrafficRecord findAll returned {} records", records.size());
+    /** The {@code limit} most recent records ({@code timestamp} and {@code id} descending). */
+    public List<TrafficRecordResponse> findLatest(int limit) {
+        List<TrafficRecordResponse> records = repository.findLatestWithStreet(PageRequest.of(0, limit)).stream()
+                .map(this::toResponse)
+                .toList();
+        log.debug("TrafficRecord findLatest({}) returned {} records", limit, records.size());
         return records;
+    }
+
+    /** The requested records that exist, most recent first. */
+    public List<TrafficRecordResponse> findByIds(List<UUID> recordIds) {
+        if (recordIds == null || recordIds.isEmpty()) {
+            return List.of();
+        }
+        List<TrafficRecordResponse> records = repository.findAllByIdInWithStreet(recordIds).stream()
+                .map(this::toResponse)
+                .toList();
+        log.debug("TrafficRecord findByIds returned {} records from {} ids", records.size(), recordIds.size());
+        return records;
+    }
+
+    public long countAll() {
+        return repository.count();
     }
 
     public PagedTrafficRecordResponse findPage(int page, int size, String query) {
