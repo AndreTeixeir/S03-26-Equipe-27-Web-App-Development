@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -27,6 +28,8 @@ import static org.mockito.Mockito.when;
 @DisplayName("ExportService tests")
 class ExportServiceTests {
 
+    // U+FEFF, written as a number because the character itself is invisible in the source.
+    private static final String BOM = String.valueOf((char) 0xFEFF);
     private static final String HEADER =
             "id,timestamp,roadType,vehicleVolume,eventType,weather,streetId,streetOsmWayId,streetName";
 
@@ -47,7 +50,7 @@ class ExportServiceTests {
     void returnsOnlyHeaderWhenThereAreNoRecords() {
         String csv = exportService.toCsv(List.of());
 
-        assertThat(csv).isEqualTo("﻿" + HEADER + "\n");
+        assertThat(csv).isEqualTo(BOM + HEADER + "\n");
     }
 
     @Test
@@ -84,14 +87,17 @@ class ExportServiceTests {
         )).lines().toList();
 
         assertThat(lines).hasSize(4);
-        assertThat(lines.get(0)).isEqualTo("﻿" + HEADER);
+        assertThat(lines.get(0)).isEqualTo(BOM + HEADER);
         assertThat(lines.get(3)).contains(",LOCAL,80,SCHOOL,CLOUDY,");
     }
 
     @Test
     @DisplayName("starts the file with a UTF-8 byte order mark so spreadsheets show accents")
     void startsWithByteOrderMark() {
-        assertThat(exportService.toCsv(List.of())).startsWith("﻿id,timestamp,");
+        byte[] bytes = exportService.toCsv(List.of()).getBytes(StandardCharsets.UTF_8);
+
+        assertThat(bytes).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+        assertThat(new String(bytes, StandardCharsets.UTF_8)).startsWith(BOM + "id,timestamp,");
     }
 
     @Test

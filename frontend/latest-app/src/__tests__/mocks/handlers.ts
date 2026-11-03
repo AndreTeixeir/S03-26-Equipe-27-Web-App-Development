@@ -273,7 +273,7 @@ function csvRow(record: TrafficRecord) {
 export function exportResponse(format: string | null, records: TrafficRecord[]) {
   const totals = { "X-Total-Records": String(records.length), "X-Exported-Records": String(records.length) };
   if (format === "csv") {
-    return new HttpResponse(`﻿${csvHeader}\n${records.map((record) => `${csvRow(record)}\n`).join("")}`, {
+    return new HttpResponse(`${String.fromCharCode(0xfeff)}${csvHeader}\n${records.map((record) => `${csvRow(record)}\n`).join("")}`, {
       headers: { ...totals, "Content-Type": "text/csv;charset=UTF-8" }
     });
   }

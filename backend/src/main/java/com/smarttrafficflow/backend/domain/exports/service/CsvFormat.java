@@ -13,7 +13,7 @@ package com.smarttrafficflow.backend.domain.exports.service;
 final class CsvFormat {
 
     /** UTF-8 byte order mark: without it, Excel reads the file in the local code page and breaks the accents. */
-    static final String BYTE_ORDER_MARK = "﻿";
+    static final String BYTE_ORDER_MARK = String.valueOf((char) 0xFEFF);
 
     private CsvFormat() {
     }

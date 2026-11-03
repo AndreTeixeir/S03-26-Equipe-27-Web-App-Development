@@ -79,7 +79,7 @@ class ExportApiIT {
         byte[] bytes = result.getResponse().getContentAsByteArray();
         assertThat(bytes).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
         String csv = new String(bytes, StandardCharsets.UTF_8);
-        assertThat(csv).startsWith("﻿" + HEADER + "\n");
+        assertThat(csv).startsWith(String.valueOf((char) 0xFEFF) + HEADER + "\n");
         assertThat(csv).contains(",LOCAL,10,Obra,Céu limpo,").endsWith(",101,Avenida São João\n");
     }
 
