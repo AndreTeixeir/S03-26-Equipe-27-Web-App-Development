@@ -111,6 +111,17 @@ function formatDatetimeLocalValue(iso: string) {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
+const timestampRequiredMessage = "Informe a data e a hora do registro.";
+
+/** The date typed in the field, or null when it is empty or not a valid date. */
+function parseTimestampInput(value: string): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const href = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -290,6 +301,9 @@ export default function App() {
   const [streetOptions, setStreetOptions] = useState<{ id: string; osmWayId: number; name: string }[]>([]);
   const [streetSearchLoading, setStreetSearchLoading] = useState(false);
   const [recordForm, setRecordForm] = useState<CreateTrafficRecordRequest>(recordTemplate);
+  // The date field keeps the text the person typed (empty while cleared); it only becomes an ISO date on save.
+  const [timestampInput, setTimestampInput] = useState(() => formatDatetimeLocalValue(new Date().toISOString()));
+  const [timestampError, setTimestampError] = useState<string | null>(null);
   const [simulationForm, setSimulationForm] = useState<SimulationRequest>(simulationTemplate);
   const [tableQuery, setTableQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState("Conectando à central de tráfego.");
@@ -434,13 +448,20 @@ export default function App() {
 
   async function handleRecordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const timestamp = parseTimestampInput(timestampInput);
+    if (!timestamp) {
+      setTimestampError(timestampRequiredMessage);
+      return;
+    }
+
     setBusyAction("record");
     setError(null);
 
     try {
       await createTrafficRecord({
         ...recordForm,
-        timestamp: new Date(recordForm.timestamp).toISOString()
+        timestamp: timestamp.toISOString()
       });
       setStatusMessage("Novo registro de tráfego adicionado ao painel.");
       await Promise.all([refreshDashboard(), refreshRecordsPage(0, recordsRequest.query)]);
@@ -773,14 +794,18 @@ export default function App() {
                     Data e hora
                     <input
                       type="datetime-local"
-                      value={formatDatetimeLocalValue(recordForm.timestamp)}
-                      onChange={(event) =>
-                        setRecordForm((current) => ({
-                          ...current,
-                          timestamp: new Date(event.target.value).toISOString()
-                        }))
-                      }
+                      value={timestampInput}
+                      aria-invalid={timestampError ? true : undefined}
+                      onChange={(event) => {
+                        setTimestampInput(event.target.value);
+                        setTimestampError(parseTimestampInput(event.target.value) ? null : timestampRequiredMessage);
+                      }}
                     />
+                    {timestampError ? (
+                      <p className="form-error" role="alert">
+                        {timestampError}
+                      </p>
+                    ) : null}
                   </label>
                   <label>
                     Tipo de via

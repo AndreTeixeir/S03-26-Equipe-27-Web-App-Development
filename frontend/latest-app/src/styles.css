@@ -626,6 +626,14 @@ button {
   line-height: 1.5;
 }
 
+.form-error {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #b3261e;
+  line-height: 1.5;
+}
+
 .street-search-results {
   display: grid;
   gap: 6px;

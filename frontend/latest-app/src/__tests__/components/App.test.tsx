@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -179,6 +179,54 @@ describe("App", () => {
     await user.click(saveButton);
 
     await waitFor(() => expect(capturedStreetOsmWayId).toBe(101));
+  });
+
+  it("shows a validation message, instead of crashing, when the date is cleared", async () => {
+    const user = userEvent.setup();
+    const createdBodies: { timestamp: string }[] = [];
+    server.use(
+      http.post("http://localhost:8080/api/traffic-records", async ({ request }) => {
+        const body = (await request.json()) as { timestamp: string; streetOsmWayId: number };
+        createdBodies.push(body);
+        return HttpResponse.json(
+          {
+            id: "rec-created",
+            timestamp: body.timestamp,
+            roadType: "ARTERIAL",
+            vehicleVolume: 140,
+            eventType: null,
+            weather: null,
+            streetId: "street-created",
+            streetOsmWayId: body.streetOsmWayId,
+            streetName: "Avenida Central"
+          },
+          { status: 201 }
+        );
+      })
+    );
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+    await user.type(screen.getByRole("searchbox", { name: /Rua/i }), "Aven");
+    await user.click(await screen.findByRole("button", { name: /Avenida Central/i }));
+
+    const dateInput = screen.getByLabelText(/Data e hora/i);
+    fireEvent.change(dateInput, { target: { value: "" } });
+
+    expect(await screen.findByText(/Informe a data e a hora do registro/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid time value/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Salvar registro/i }));
+    expect(createdBodies).toHaveLength(0);
+    expect(screen.getByText(/Informe a data e a hora do registro/i)).toBeInTheDocument();
+
+    fireEvent.change(dateInput, { target: { value: "2026-11-03T10:15" } });
+    expect(screen.queryByText(/Informe a data e a hora do registro/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Salvar registro/i }));
+    await waitFor(() => expect(createdBodies).toHaveLength(1));
+    expect(createdBodies[0]?.timestamp).toBe(new Date("2026-11-03T10:15").toISOString());
   });
 
   it("shows record creation errors without breaking the workspace", async () => {
