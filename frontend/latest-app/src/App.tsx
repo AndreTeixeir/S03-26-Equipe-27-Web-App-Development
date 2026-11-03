@@ -8,6 +8,7 @@ import {
   createTrafficRecord,
   generateSimulation,
   getExport,
+  getFilteredRecordIds,
   getTrafficInsights,
   getTrafficMap,
   getTrafficRecordSummary,
@@ -359,6 +360,8 @@ export default function App() {
   const [lastLoadSucceeded, setLastLoadSucceeded] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [bulkSelectionLoading, setBulkSelectionLoading] = useState(false);
+  // Warning shown when "select all filtered" had to stop at the backend ceiling.
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"record" | "simulation" | "export" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewMode>("home");
@@ -589,27 +592,7 @@ export default function App() {
     );
   }
 
-  async function getAllFilteredRecordIds(query: string) {
-    const firstPage = await getTrafficRecords({ page: 0, size: emptyRecordsPage.size, query });
-    const recordIds = firstPage.items.map((record) => record.id);
-
-    if (firstPage.totalPages <= 1) {
-      return recordIds;
-    }
-
-    const remainingPages = await Promise.all(
-      Array.from({ length: firstPage.totalPages - 1 }, (_, index) =>
-        getTrafficRecords({ page: index + 1, size: firstPage.size, query })
-      )
-    );
-
-    remainingPages.forEach((page) => {
-      recordIds.push(...page.items.map((record) => record.id));
-    });
-
-    return recordIds;
-  }
-
+  // One request brings the ids of every record that matches the filter, up to the backend ceiling.
   async function toggleAllFilteredSelection() {
     if (recordsPage.totalItems === 0) {
       return;
@@ -619,18 +602,26 @@ export default function App() {
     setError(null);
 
     try {
-      const filteredRecordIds = await getAllFilteredRecordIds(recordsRequest.query);
+      const filtered = await getFilteredRecordIds(recordsRequest.query);
+      const filteredRecordIds = filtered.recordIds;
       if (filteredRecordIds.length === 0) {
         return;
       }
 
-      setStagedRecordIds((current) => {
-        const filteredRecordIdSet = new Set(filteredRecordIds);
-        const allSelected = filteredRecordIds.every((id) => current.includes(id));
-        return allSelected
+      const filteredRecordIdSet = new Set(filteredRecordIds);
+      const stagedRecordIdSet = new Set(stagedRecordIds);
+      const allSelected = filteredRecordIds.every((id) => stagedRecordIdSet.has(id));
+
+      setStagedRecordIds((current) =>
+        allSelected
           ? current.filter((id) => !filteredRecordIdSet.has(id))
-          : Array.from(new Set([...current, ...filteredRecordIds]));
-      });
+          : Array.from(new Set([...current, ...filteredRecordIds]))
+      );
+      setSelectionNotice(
+        !allSelected && filtered.truncated
+          ? `Selecionados os ${filtered.limit.toLocaleString("pt-BR")} registros mais recentes de ${filtered.total.toLocaleString("pt-BR")} encontrados.`
+          : null
+      );
     } catch (caughtError) {
       const message =
         caughtError instanceof ApiError ? caughtError.message : "Não foi possível atualizar a seleção filtrada.";
@@ -642,6 +633,7 @@ export default function App() {
 
   function clearSelection() {
     setStagedRecordIds([]);
+    setSelectionNotice(null);
   }
 
   function selectStreetOption(osmWayId: number, name: string) {
@@ -1072,6 +1064,11 @@ export default function App() {
               </div>
               {hasPendingSelectionChanges ? (
                 <p className="table-selection-note">Há mudanças pendentes. Clique em “Aplicar seleção”.</p>
+              ) : null}
+              {selectionNotice ? (
+                <p className="table-selection-note" role="status">
+                  {selectionNotice}
+                </p>
               ) : null}
 
               <div className="table-scroll">

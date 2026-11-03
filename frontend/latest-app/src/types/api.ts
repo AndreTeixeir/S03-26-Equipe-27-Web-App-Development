@@ -20,6 +20,14 @@ export interface PagedResponse<T> {
   totalPages: number;
 }
 
+/** Ids of every record that matches the table filter, most recent first, up to a ceiling. */
+export interface RecordIdsResponse {
+  recordIds: string[];
+  total: number;
+  limit: number;
+  truncated: boolean;
+}
+
 export interface CreateTrafficRecordRequest {
   timestamp: string;
   roadType: string;

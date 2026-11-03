@@ -6,7 +6,7 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../mocks/server";
 import { mockSummary } from "../mocks/handlers";
-import type { PagedResponse, TrafficRecord, TrafficRecordSummary } from "../../types/api";
+import type { PagedResponse, RecordIdsResponse, TrafficRecord, TrafficRecordSummary } from "../../types/api";
 
 // Stands in for the Leaflet map instance, to check how the map is framed.
 const mapProbe = vi.hoisted(() => ({ fitBounds: vi.fn() }));
@@ -409,12 +409,15 @@ describe("App", () => {
       streetOsmWayId: 1000 + index,
       streetName: `Rua ${index + 1}`
     })) satisfies TrafficRecord[];
+    const pagesRequested: number[] = [];
+    const idsRequests: string[] = [];
 
     server.use(
       http.get("http://localhost:8080/api/traffic-records", ({ request }) => {
         const url = new URL(request.url);
         const page = Number(url.searchParams.get("page") ?? "0");
         const size = Number(url.searchParams.get("size") ?? "20");
+        pagesRequested.push(page);
         const start = page * size;
         return HttpResponse.json({
           items: pagedRecords.slice(start, start + size),
@@ -423,6 +426,15 @@ describe("App", () => {
           totalItems: pagedRecords.length,
           totalPages: Math.ceil(pagedRecords.length / size)
         } satisfies PagedResponse<TrafficRecord>);
+      }),
+      http.get("http://localhost:8080/api/traffic-records/ids", ({ request }) => {
+        idsRequests.push(new URL(request.url).search);
+        return HttpResponse.json({
+          recordIds: pagedRecords.map((record) => record.id),
+          total: pagedRecords.length,
+          limit: 10000,
+          truncated: false
+        } satisfies RecordIdsResponse);
       }),
       http.get("http://localhost:8080/api/traffic-records/summary", () =>
         HttpResponse.json({
@@ -444,6 +456,10 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByText(/22 selecionado\(s\), 0 aplicado\(s\)/i)).toBeInTheDocument());
 
+    // All the ids come from one request; no other page of the table was fetched to collect them.
+    expect(idsRequests).toEqual([""]);
+    expect(pagesRequested).toEqual([0]);
+
     await user.click(screen.getByRole("button", { name: /Próxima página/i }));
 
     const page21Checkbox = await screen.findByLabelText("Selecionar registro page-rec-21");
@@ -459,6 +475,78 @@ describe("App", () => {
 
     const firstCheckbox = await screen.findByLabelText("Selecionar registro page-rec-1");
     expect(firstCheckbox).not.toBeChecked();
+  });
+
+  it("collects the ids of the current filter in one request and warns when the list was cut", async () => {
+    const user = userEvent.setup();
+    const idsRequests: string[] = [];
+    server.use(
+      http.get("http://localhost:8080/api/traffic-records/ids", ({ request }) => {
+        idsRequests.push(new URL(request.url).search);
+        return HttpResponse.json({
+          recordIds: ["rec-1", "rec-2"],
+          total: 12345,
+          limit: 10000,
+          truncated: true
+        } satisfies RecordIdsResponse);
+      })
+    );
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+    await user.type(await screen.findByRole("searchbox", { name: /Filtro/i }), "Rodovia");
+    await screen.findByText(/1 encontrados para esta busca/i);
+    await user.click(screen.getByRole("button", { name: /Selecionar\/limpar filtrados/i }));
+
+    expect(
+      await screen.findByText("Selecionados os 10.000 registros mais recentes de 12.345 encontrados.")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 selecionado\(s\), 0 aplicado\(s\)/i)).toBeInTheDocument();
+    expect(idsRequests).toEqual(["?query=Rodovia"]);
+
+    // Clearing the filtered records removes the warning along with the selection.
+    await user.click(screen.getByRole("button", { name: /Selecionar\/limpar filtrados/i }));
+    await waitFor(() => expect(screen.getByText(/0 selecionado\(s\), 0 aplicado\(s\)/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Selecionados os 10.000 registros mais recentes/i)).not.toBeInTheDocument();
+  });
+
+  it("does not warn when every filtered record fit in the list", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+    await screen.findByLabelText(/Selecionar registro rec-1/i);
+    await user.click(screen.getByRole("button", { name: /Selecionar\/limpar filtrados/i }));
+
+    expect(await screen.findByText(/2 selecionado\(s\), 0 aplicado\(s\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Selecionados os .* registros mais recentes/i)).not.toBeInTheDocument();
+  });
+
+  it("clears the cut warning when the selection is cleared", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("http://localhost:8080/api/traffic-records/ids", () =>
+        HttpResponse.json({
+          recordIds: ["rec-1"],
+          total: 500,
+          limit: 1,
+          truncated: true
+        } satisfies RecordIdsResponse)
+      )
+    );
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+    await screen.findByLabelText(/Selecionar registro rec-1/i);
+    await user.click(screen.getByRole("button", { name: /Selecionar\/limpar filtrados/i }));
+    expect(await screen.findByText(/Selecionados os 1 registros mais recentes de 500 encontrados/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Limpar seleção$/i }));
+
+    expect(screen.queryByText(/Selecionados os 1 registros mais recentes/i)).not.toBeInTheDocument();
   });
 
   it("keeps the dashboard stable when the backend returns no records", async () => {

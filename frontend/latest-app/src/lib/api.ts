@@ -2,6 +2,7 @@ import type {
   CreateTrafficRecordRequest,
   MapFeatureCollection,
   PagedResponse,
+  RecordIdsResponse,
   SimulationRequest,
   StreetSearchResponse,
   TrafficInsightResponse,
@@ -65,6 +66,18 @@ export function getTrafficRecords(
   }
 
   return request<PagedResponse<TrafficRecord>>(`/traffic-records?${searchParams.toString()}`, { ...options });
+}
+
+/** Ids of every record that matches the table filter, in one request (up to the backend ceiling). */
+export function getFilteredRecordIds(query: string, options?: RequestOptions) {
+  const searchParams = new URLSearchParams();
+  const trimmed = query.trim();
+  if (trimmed) {
+    searchParams.set("query", trimmed);
+  }
+
+  const queryString = searchParams.toString();
+  return request<RecordIdsResponse>(`/traffic-records/ids${queryString ? `?${queryString}` : ""}`, { ...options });
 }
 
 export function createTrafficRecord(payload: CreateTrafficRecordRequest) {

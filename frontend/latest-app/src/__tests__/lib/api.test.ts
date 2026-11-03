@@ -6,6 +6,7 @@ import {
   createTrafficRecord,
   generateSimulation,
   getExport,
+  getFilteredRecordIds,
   getTrafficInsights,
   getTrafficMap,
   getTrafficRecordSummary,
@@ -190,6 +191,39 @@ describe("api client", () => {
     const mapData = await getTrafficMap(["rec-1"]);
     expect(mapData.features[0]?.properties.streetName).toBe("Avenida Central");
     expect(mapData.meta?.scope).toBe("selection");
+  });
+
+  it("collects the ids of the filtered records in one request", async () => {
+    const all = await getFilteredRecordIds("");
+    const highways = await getFilteredRecordIds("  Rodovia ");
+
+    expect(all.recordIds).toEqual(["rec-1", "rec-2"]);
+    expect(all.truncated).toBe(false);
+    expect(highways.recordIds).toEqual(["rec-2"]);
+    expect(highways.total).toBe(1);
+  });
+
+  it("sends the filter text in the query string and leaves it out when empty", async () => {
+    const searches: string[] = [];
+    server.use(
+      http.get(`${BASE}/traffic-records/ids`, ({ request }) => {
+        searches.push(new URL(request.url).search);
+        return HttpResponse.json({ recordIds: [], total: 0, limit: 10000, truncated: false });
+      })
+    );
+
+    await getFilteredRecordIds("   ");
+    await getFilteredRecordIds("norte & sul");
+
+    expect(searches).toEqual(["", "?query=norte+%26+sul"]);
+  });
+
+  it("surfaces errors from the filtered ids request", async () => {
+    server.use(
+      http.get(`${BASE}/traffic-records/ids`, () => HttpResponse.json({ message: "Parâmetro inválido" }, { status: 400 }))
+    );
+
+    await expect(getFilteredRecordIds("x")).rejects.toMatchObject({ status: 400, message: "Parâmetro inválido" });
   });
 
   it("searches streets", async () => {
