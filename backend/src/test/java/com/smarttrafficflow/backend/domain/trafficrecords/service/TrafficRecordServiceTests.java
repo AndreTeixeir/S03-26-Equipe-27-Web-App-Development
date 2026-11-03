@@ -2,6 +2,8 @@ package com.smarttrafficflow.backend.domain.trafficrecords.service;
 
 import com.smarttrafficflow.backend.api.dto.CreateTrafficRecordRequest;
 import com.smarttrafficflow.backend.api.dto.PagedTrafficRecordResponse;
+import com.smarttrafficflow.backend.api.dto.RecordIdsResponse;
+import com.smarttrafficflow.backend.config.RecordLimits;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordSummaryResponse;
 import com.smarttrafficflow.backend.domain.streets.entity.Street;
@@ -10,11 +12,11 @@ import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
 import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficRecordRepository;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,8 +42,44 @@ class TrafficRecordServiceTests {
     @Mock
     private StreetService streetService;
 
-    @InjectMocks
     private TrafficRecordService trafficRecordService;
+
+    @BeforeEach
+    void setUp() {
+        trafficRecordService = new TrafficRecordService(
+                trafficRecordRepository, streetService, new RecordLimits("3", "250"));
+    }
+
+    @Test
+    @DisplayName("returns the ids of the filtered records, up to the export limit, flagging a cut")
+    void returnsFilteredIdsFlaggingACut() {
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(trafficRecordRepository.findIdsByFilter(any(), any()))
+                .thenReturn(new PageImpl<>(ids, PageRequest.of(0, 3), 7));
+
+        RecordIdsResponse response = trafficRecordService.findFilteredIds("  Norte ");
+
+        assertThat(response.recordIds()).isEqualTo(ids);
+        assertThat(response.total()).isEqualTo(7);
+        assertThat(response.limit()).isEqualTo(3);
+        assertThat(response.truncated()).isTrue();
+        ArgumentCaptor<org.springframework.data.domain.Pageable> pageable =
+                ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(trafficRecordRepository).findIdsByFilter(org.mockito.ArgumentMatchers.eq("%norte%"), pageable.capture());
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(3);
+        assertThat(pageable.getValue().getPageNumber()).isZero();
+    }
+
+    @Test
+    @DisplayName("does not flag a cut when every match fits in the limit")
+    void doesNotFlagACutWhenEverythingFits() {
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(trafficRecordRepository.findIdsByFilter(any(), any()))
+                .thenReturn(new PageImpl<>(ids, PageRequest.of(0, 3), 3));
+
+        assertThat(trafficRecordService.findFilteredIds(null).truncated()).isFalse();
+        verify(trafficRecordRepository).findIdsByFilter(org.mockito.ArgumentMatchers.isNull(), any());
+    }
 
     @Test
     @DisplayName("creates a record by resolving the street and mapping the saved entity")

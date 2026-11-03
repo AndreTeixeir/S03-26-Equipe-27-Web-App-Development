@@ -130,6 +130,23 @@ class TrafficRecordRepositoryIT {
     }
 
     @Test
+    @DisplayName("lists only the ids of the filtered records, newest first, with the total of matches")
+    void listsTheFilteredIds() {
+        Page<UUID> all = trafficRecordRepository.findIdsByFilter(null, PageRequest.of(0, 2));
+        Page<UUID> highways = trafficRecordRepository.findIdsByFilter("%highway%", PageRequest.of(0, 10));
+        Page<UUID> avenue = trafficRecordRepository.findIdsByFilter("%avenida%", PageRequest.of(0, 10));
+        Page<UUID> nothing = trafficRecordRepository.findIdsByFilter("%inexistente%", PageRequest.of(0, 10));
+
+        assertThat(all.getContent()).containsExactly(floresRecordId, highwayRecordId);
+        assertThat(all.getTotalElements()).isEqualTo(3);
+        assertThat(highways.getContent()).containsExactly(highwayRecordId);
+        assertThat(avenue.getContent()).containsExactly(highwayRecordId, morningRecordId);
+        assertThat(avenue.getTotalElements()).isEqualTo(2);
+        assertThat(nothing.getContent()).isEmpty();
+        assertThat(nothing.getTotalElements()).isZero();
+    }
+
+    @Test
     @DisplayName("loads only the requested records with their streets")
     void loadsRequestedRecordsWithStreet() {
         List<TrafficRecord> records = trafficRecordRepository.findAllByIdInWithStreet(

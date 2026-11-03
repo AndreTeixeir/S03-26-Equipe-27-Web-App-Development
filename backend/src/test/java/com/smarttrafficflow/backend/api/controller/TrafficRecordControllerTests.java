@@ -2,6 +2,7 @@ package com.smarttrafficflow.backend.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smarttrafficflow.backend.api.dto.PagedTrafficRecordResponse;
+import com.smarttrafficflow.backend.api.dto.RecordIdsResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordSummaryResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordResponse;
 import com.smarttrafficflow.backend.api.exception.GlobalExceptionHandler;
@@ -195,6 +196,34 @@ class TrafficRecordControllerTests {
                 .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalItems").value(12))
                 .andExpect(jsonPath("$.totalPages").value(2));
+    }
+
+    @Test
+    @DisplayName("returns the ids of the filtered records in one response, flagging a cut")
+    void returnsTheFilteredIds() throws Exception {
+        UUID first = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID second = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        when(trafficRecordService.findFilteredIds("norte"))
+                .thenReturn(new RecordIdsResponse(List.of(first, second), 12_345, 10_000, true));
+
+        mockMvc.perform(get("/api/traffic-records/ids").param("query", "norte"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordIds[0]").value(first.toString()))
+                .andExpect(jsonPath("$.recordIds[1]").value(second.toString()))
+                .andExpect(jsonPath("$.total").value(12345))
+                .andExpect(jsonPath("$.limit").value(10000))
+                .andExpect(jsonPath("$.truncated").value(true));
+    }
+
+    @Test
+    @DisplayName("accepts the ids request without a filter")
+    void returnsTheIdsWithoutAFilter() throws Exception {
+        when(trafficRecordService.findFilteredIds(null)).thenReturn(new RecordIdsResponse(List.of(), 0, 10_000, false));
+
+        mockMvc.perform(get("/api/traffic-records/ids"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordIds").isEmpty())
+                .andExpect(jsonPath("$.truncated").value(false));
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.smarttrafficflow.backend.domain.trafficrecords.service;
 
 import com.smarttrafficflow.backend.api.dto.CreateTrafficRecordRequest;
 import com.smarttrafficflow.backend.api.dto.PagedTrafficRecordResponse;
+import com.smarttrafficflow.backend.api.dto.RecordIdsResponse;
+import com.smarttrafficflow.backend.config.RecordLimits;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordSummaryResponse;
 import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
@@ -26,10 +28,12 @@ public class TrafficRecordService {
 
     private final TrafficRecordRepository repository;
     private final StreetService streetService;
+    private final RecordLimits limits;
 
-    public TrafficRecordService(TrafficRecordRepository repository, StreetService streetService) {
+    public TrafficRecordService(TrafficRecordRepository repository, StreetService streetService, RecordLimits limits) {
         this.repository = repository;
         this.streetService = streetService;
+        this.limits = limits;
     }
 
     public TrafficRecordResponse create(CreateTrafficRecordRequest request) {
@@ -95,6 +99,19 @@ public class TrafficRecordService {
                 recordsPage.getTotalElements(),
                 recordsPage.getTotalPages()
         );
+    }
+
+    /**
+     * Ids of every record that matches the table filter ("select all filtered"), most recent first, up to the export
+     * limit. {@code truncated} tells the caller there were more matches than ids.
+     */
+    public RecordIdsResponse findFilteredIds(String query) {
+        int limit = limits.exportMaxRecords();
+        Page<UUID> ids = repository.findIdsByFilter(buildQueryPattern(query), PageRequest.of(0, limit));
+        boolean truncated = ids.getTotalElements() > ids.getNumberOfElements();
+        log.debug("TrafficRecord findFilteredIds returned {} ids of {} matches (limit {})",
+                ids.getNumberOfElements(), ids.getTotalElements(), limit);
+        return new RecordIdsResponse(ids.getContent(), ids.getTotalElements(), limit, truncated);
     }
 
     public TrafficRecordSummaryResponse findSummary(List<UUID> recordIds) {
