@@ -87,16 +87,21 @@ class TrafficRecordRepositoryIT {
     @Test
     @DisplayName("breaks timestamp ties by id, descending, so the cut is stable")
     void breaksTimestampTiesById() {
-        UUID first = saveRecord(centralId, "2025-01-01T00:00:00Z", "LOCAL", 1, null, null);
-        UUID second = saveRecord(centralId, "2025-01-01T00:00:00Z", "LOCAL", 1, null, null);
-        entityManager.flush();
+        // Fixed ids on purpose. PostgreSQL orders uuid by its bytes without sign, while UUID.compareTo in Java compares
+        // as signed numbers, so two ids whose first byte is on opposite sides of 0x80 sort in opposite ways. These are
+        // such a pair: for the database, c871... is greater than 3231....
+        UUID greater = UUID.fromString("c871e1c7-1c82-4e27-8aea-8f86b98e5027");
+        UUID smaller = UUID.fromString("32314a64-f647-4cfd-916a-00fab9c7d538");
+        for (UUID id : new UUID[]{smaller, greater}) {
+            jdbcTemplate.update(
+                    "INSERT INTO traffic_records (id, timestamp, road_type, vehicle_volume, street_id) VALUES (?, ?, ?, ?, ?)",
+                    id, OffsetDateTime.parse("2025-01-01T00:00:00Z"), "LOCAL", 1, centralId);
+        }
         entityManager.clear();
 
         List<TrafficRecord> latest = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2));
 
-        UUID expectedFirst = first.compareTo(second) > 0 ? first : second;
-        UUID expectedSecond = first.compareTo(second) > 0 ? second : first;
-        assertThat(latest).extracting(TrafficRecord::getId).containsExactly(expectedFirst, expectedSecond);
+        assertThat(latest).extracting(TrafficRecord::getId).containsExactly(greater, smaller);
     }
 
     @Test
