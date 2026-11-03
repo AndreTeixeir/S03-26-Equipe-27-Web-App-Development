@@ -167,10 +167,12 @@ class TrafficStatsApiIT {
                 .andExpect(jsonPath("$.labels.length()").value(24))
                 .andExpect(jsonPath("$.labels[0]").value("00"))
                 .andExpect(jsonPath("$.labels[23]").value("23"))
+                .andExpect(jsonPath("$.values.length()").value(24))
                 .andExpect(jsonPath("$.values[?(@ != 0)]").isEmpty());
         mockMvc.perform(get("/api/traffic-stats").param("groupBy", "weekday"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.labels.length()").value(7))
+                .andExpect(jsonPath("$.values.length()").value(7))
                 .andExpect(jsonPath("$.labels[0]").value("MONDAY"))
                 .andExpect(jsonPath("$.labels[6]").value("SUNDAY"));
         mockMvc.perform(get("/api/traffic-stats").param("groupBy", "roadType"))
