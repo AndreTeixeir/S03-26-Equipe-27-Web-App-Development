@@ -584,6 +584,122 @@ describe("App", () => {
     expect(click).toHaveBeenCalledTimes(1);
   });
 
+  describe("export", () => {
+    it("says how many records were exported", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Exportar CSV/i }));
+
+      expect(await screen.findByText(/Exportação preparada no formato CSV: 2 registros\./i)).toBeInTheDocument();
+    });
+
+    it("warns when the file was cut at the backend ceiling", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      server.use(
+        http.get("http://localhost:8080/api/exports", () =>
+          HttpResponse.json([], { headers: { "X-Total-Records": "12345", "X-Exported-Records": "10000" } })
+        )
+      );
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Exportar JSON/i }));
+
+      expect(
+        await screen.findByText(/Exportados os 10\.000 registros mais recentes de 12\.345\./i)
+      ).toBeInTheDocument();
+    });
+
+    it("exports the applied selection with a POST, sending the ids in the body", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      const posts: { url: string; body: unknown }[] = [];
+      let gets = 0;
+      server.use(
+        http.get("http://localhost:8080/api/exports", () => {
+          gets += 1;
+          return HttpResponse.json([]);
+        }),
+        http.post("http://localhost:8080/api/exports/filter", async ({ request }) => {
+          posts.push({ url: request.url, body: await request.json() });
+          return HttpResponse.json([{ id: "rec-1" }], {
+            headers: { "X-Total-Records": "1", "X-Exported-Records": "1" }
+          });
+        })
+      );
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+      await user.click(await screen.findByLabelText(/Selecionar registro rec-1/i));
+      await user.click(screen.getByRole("button", { name: /Aplicar seleção/i }));
+      await screen.findByText(/1 selecionado\(s\), 1 aplicado\(s\)/i);
+      await user.click(screen.getByRole("button", { name: /Exportar JSON/i }));
+
+      expect(await screen.findByText(/Exportação preparada no formato JSON: 1 registro selecionado\./i)).toBeInTheDocument();
+      expect(posts).toEqual([
+        { url: "http://localhost:8080/api/exports/filter?format=json", body: { recordIds: ["rec-1"] } }
+      ]);
+      expect(gets).toBe(0);
+    });
+
+    it("does not use a selection that was not applied yet", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      let posts = 0;
+      server.use(
+        http.post("http://localhost:8080/api/exports/filter", () => {
+          posts += 1;
+          return HttpResponse.json([]);
+        })
+      );
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+      await user.click(await screen.findByLabelText(/Selecionar registro rec-1/i));
+      await user.click(screen.getByRole("button", { name: /Exportar CSV/i }));
+
+      expect(await screen.findByText(/Exportação preparada no formato CSV: 2 registros\./i)).toBeInTheDocument();
+      expect(posts).toBe(0);
+    });
+
+    it("downloads the file with the right name", async () => {
+      const user = userEvent.setup();
+      const downloads: string[] = [];
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Exportar CSV/i }));
+      await user.click(await screen.findByRole("button", { name: /Exportar JSON/i }));
+
+      await waitFor(() => expect(downloads).toEqual(["traffic-data.csv", "traffic-data.json"]));
+    });
+
+    it("shows the error of a selection that is too large", async () => {
+      const user = userEvent.setup();
+      server.use(
+        http.post("http://localhost:8080/api/exports/filter", () =>
+          HttpResponse.json(
+            { message: "A seleção tem 10001 registros e o limite por exportação é 10000. Reduza a seleção." },
+            { status: 400 }
+          )
+        )
+      );
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+      await user.click(await screen.findByLabelText(/Selecionar registro rec-1/i));
+      await user.click(screen.getByRole("button", { name: /Aplicar seleção/i }));
+      await screen.findByText(/1 selecionado\(s\), 1 aplicado\(s\)/i);
+      await user.click(screen.getByRole("button", { name: /Exportar CSV/i }));
+
+      expect(await screen.findByText(/O limite por exportação é 10000|limite por exportação é 10000/i)).toBeInTheDocument();
+    });
+  });
+
   it("renders the JSON export action", async () => {
     render(<App />);
 

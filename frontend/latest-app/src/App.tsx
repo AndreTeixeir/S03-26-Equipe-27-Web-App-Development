@@ -2,6 +2,7 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import type { ExportResult } from "./lib/api";
 import {
   API_BASE_URL,
   ApiError,
@@ -124,6 +125,31 @@ function parseTimestampInput(value: string): Date | null {
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatInteger(value: number) {
+  return value.toLocaleString("pt-BR");
+}
+
+function countRecords(count: number) {
+  return `${formatInteger(count)} ${count === 1 ? "registro" : "registros"}`;
+}
+
+/** What was exported: the selection, the whole base, or only the most recent records when the file was cut. */
+function describeExport(format: "csv" | "json", result: ExportResult, hasSelection: boolean) {
+  const label = format.toUpperCase();
+  const { exported, total } = result;
+
+  if (exported === null) {
+    return `Exportação preparada no formato ${label}.`;
+  }
+  if (hasSelection) {
+    return `Exportação preparada no formato ${label}: ${countRecords(exported)} ${exported === 1 ? "selecionado" : "selecionados"}.`;
+  }
+  if (total !== null && exported < total) {
+    return `Exportados os ${formatInteger(exported)} registros mais recentes de ${formatInteger(total)}.`;
+  }
+  return `Exportação preparada no formato ${label}: ${countRecords(exported)}.`;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -565,9 +591,10 @@ export default function App() {
     setError(null);
 
     try {
-      const blob = await getExport(format);
-      downloadBlob(blob, format === "csv" ? "traffic-data.csv" : "traffic-data.json");
-      setStatusMessage(`Exportação preparada no formato ${format.toUpperCase()}.`);
+      // The applied selection is the context the cards show, so it is also what gets exported.
+      const result = await getExport(format, appliedRecordIds);
+      downloadBlob(result.blob, format === "csv" ? "traffic-data.csv" : "traffic-data.json");
+      setStatusMessage(describeExport(format, result, appliedRecordIds.length > 0));
     } catch (caughtError) {
       const message =
         caughtError instanceof ApiError ? caughtError.message : "Não foi possível exportar os dados de tráfego.";

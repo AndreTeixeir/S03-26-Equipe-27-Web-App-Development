@@ -240,22 +240,45 @@ export const handlers = [
       }))
     );
   }),
-  http.get(`${BASE}/exports`, ({ request }) => {
+  http.get(`${BASE}/exports`, ({ request }) =>
+    exportResponse(new URL(request.url).searchParams.get("format"), mockRecords)
+  ),
+  http.post(`${BASE}/exports/filter`, async ({ request }) => {
     const format = new URL(request.url).searchParams.get("format");
-    if (format === "csv") {
-      return new HttpResponse("id,timestamp\nrec-1,2024-06-17T08:00:00Z\n", {
-        headers: {
-          "Content-Type": "text/csv"
-        }
-      });
-    }
-    if (format === "json") {
-      return new HttpResponse(JSON.stringify([{ id: "rec-1" }]), {
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
-    }
-    return HttpResponse.json({ message: "Formato inválido" }, { status: 400 });
+    const body = (await request.json()) as { recordIds?: string[] };
+    const selected = body.recordIds?.length
+      ? mockRecords.filter((record) => body.recordIds?.includes(record.id))
+      : mockRecords;
+    return exportResponse(format, selected);
   })
 ];
+
+const csvHeader = "id,timestamp,roadType,vehicleVolume,eventType,weather,streetId,streetOsmWayId,streetName";
+
+function csvRow(record: TrafficRecord) {
+  return [
+    record.id,
+    record.timestamp,
+    record.roadType,
+    record.vehicleVolume,
+    record.eventType ?? "",
+    record.weather ?? "",
+    record.streetId ?? "",
+    record.streetOsmWayId ?? "",
+    record.streetName ?? ""
+  ].join(",");
+}
+
+/** Same as the backend: the real records, with the totals in headers. The CSV starts with the UTF-8 BOM. */
+export function exportResponse(format: string | null, records: TrafficRecord[]) {
+  const totals = { "X-Total-Records": String(records.length), "X-Exported-Records": String(records.length) };
+  if (format === "csv") {
+    return new HttpResponse(`﻿${csvHeader}\n${records.map((record) => `${csvRow(record)}\n`).join("")}`, {
+      headers: { ...totals, "Content-Type": "text/csv;charset=UTF-8" }
+    });
+  }
+  if (format === "json") {
+    return HttpResponse.json(records, { headers: totals });
+  }
+  return HttpResponse.json({ message: "Formato inválido" }, { status: 400 });
+}

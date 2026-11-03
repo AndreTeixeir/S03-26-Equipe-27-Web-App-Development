@@ -164,14 +164,56 @@ export function searchStreets(query: string, limit = 20, offset = 0) {
   return request<StreetSearchResponse>(`/streets/search?${params.toString()}`);
 }
 
-export async function getExport(format: "csv" | "json"): Promise<Blob> {
-  const response = await fetch(`${API_BASE_URL}/exports?format=${format}`);
+/**
+ * The exported file and its totals, read from the response headers: `total` is how many records exist in the
+ * context, `exported` how many are in the file. The file is cut when `exported` is smaller than `total`.
+ * Both are null when the backend did not send the headers.
+ */
+export interface ExportResult {
+  blob: Blob;
+  total: number | null;
+  exported: number | null;
+}
+
+function readCountHeader(response: Response, name: string): number | null {
+  const value = response.headers.get(name);
+  if (value === null || value.trim() === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Without ids, exports the most recent records of the whole base (up to the backend ceiling). With ids, exports the
+ * selection: the ids travel in the body of a POST, because a large selection does not fit in a URL.
+ */
+export async function getExport(
+  format: "csv" | "json",
+  recordIds?: string[],
+  options?: RequestOptions
+): Promise<ExportResult> {
+  const hasSelection = recordIds !== undefined && recordIds.length > 0;
+  const response = hasSelection
+    ? await fetch(`${API_BASE_URL}/exports/filter?format=${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recordIds }),
+        ...options
+      })
+    : await fetch(`${API_BASE_URL}/exports?format=${format}`, { ...options });
+
   if (!response.ok) {
     const text = await response.text();
     const message = parseApiErrorMessage(text) || `Export failed with status ${response.status}`;
     throw new ApiError(message, response.status);
   }
-  return response.blob();
+
+  return {
+    blob: await response.blob(),
+    total: readCountHeader(response, "X-Total-Records"),
+    exported: readCountHeader(response, "X-Exported-Records")
+  };
 }
 
 function parseApiErrorMessage(text: string) {
