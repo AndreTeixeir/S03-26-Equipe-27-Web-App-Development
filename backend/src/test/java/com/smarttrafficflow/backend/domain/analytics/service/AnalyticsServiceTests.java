@@ -19,7 +19,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -109,11 +112,34 @@ class AnalyticsServiceTests {
     @Test
     @DisplayName("rejects unsupported group by values")
     void rejectsUnsupportedGroupByValues() {
-        when(trafficRecordService.findAllEntities()).thenReturn(List.of(recordAt(8, "LOCAL", 100)));
-
         assertThatThrownBy(() -> analyticsService.getStats("invalid", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("groupBy invalido");
+    }
+
+    @Test
+    @DisplayName("rejects an unsupported group by even when there are no records")
+    void rejectsUnsupportedGroupByWithEmptyDatabase() {
+        lenient().when(trafficRecordService.findAllEntities()).thenReturn(List.of());
+        lenient().when(trafficRecordService.findEntitiesByIds(any())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> analyticsService.getStats("xyz", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("groupBy invalido: xyz");
+        assertThatThrownBy(() -> analyticsService.getStats("xyz", List.of(UUID.randomUUID())))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(trafficRecordService);
+    }
+
+    @Test
+    @DisplayName("rejects a missing group by without reading any record")
+    void rejectsMissingGroupBy() {
+        assertThatThrownBy(() -> analyticsService.getStats(null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("groupBy invalido");
+
+        verifyNoInteractions(trafficRecordService);
     }
 
     @Test

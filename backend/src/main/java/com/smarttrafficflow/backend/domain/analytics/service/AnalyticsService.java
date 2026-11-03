@@ -26,6 +26,7 @@ public class AnalyticsService {
     }
 
     public TrafficStatsResponse getStats(String groupBy, List<UUID> recordIds) {
+        StatsGroupBy dimension = StatsGroupBy.parse(groupBy);
         List<TrafficRecord> records = (recordIds == null || recordIds.isEmpty())
                 ? trafficRecordService.findAllEntities()
                 : trafficRecordService.findEntitiesByIds(recordIds);
@@ -33,14 +34,10 @@ public class AnalyticsService {
         Map<String, Long> aggregated = new LinkedHashMap<>();
 
         for (TrafficRecord record : records) {
-            String key = switch (groupBy) {
-                case "hour" -> String.format("%02d", record.getTimestamp().getHour());
-                case "weekday" -> normalizeWeekday(record.getTimestamp().getDayOfWeek());
-                case "roadType" -> safeValue(record.getRoadType(), "UNKNOWN");
-                default -> {
-                    log.warn("Analytics requested with invalid groupBy={}", groupBy);
-                    throw new IllegalArgumentException("groupBy invalido: " + groupBy);
-                }
+            String key = switch (dimension) {
+                case HOUR -> String.format("%02d", record.getTimestamp().getHour());
+                case WEEKDAY -> normalizeWeekday(record.getTimestamp().getDayOfWeek());
+                case ROAD_TYPE -> safeValue(record.getRoadType(), "UNKNOWN");
             };
 
             aggregated.merge(key, record.getVehicleVolume().longValue(), Long::sum);
