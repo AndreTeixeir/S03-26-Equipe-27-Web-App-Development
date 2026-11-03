@@ -81,6 +81,13 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- Testes unitários (*Tests) rodam no surefire, na fase "test". Testes de integração (*IT, com o
+                 contexto real e/ou o banco por Testcontainers) rodam aqui, nas fases "integration-test" e "verify".
+                 A versão e os goals vêm do spring-boot-starter-parent. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
         </plugins>
     </build>
 </project>

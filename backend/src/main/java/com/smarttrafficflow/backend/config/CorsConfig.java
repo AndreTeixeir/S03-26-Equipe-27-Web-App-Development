@@ -26,6 +26,8 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins.toArray(String[]::new))
                 .allowedMethods("GET", "POST", "OPTIONS")
                 .allowedHeaders("*")
+                // So a page served from another origin (local development) can read the export totals.
+                .exposedHeaders("X-Total-Records", "X-Exported-Records", "Content-Disposition")
                 .allowCredentials(false);
     }
 }

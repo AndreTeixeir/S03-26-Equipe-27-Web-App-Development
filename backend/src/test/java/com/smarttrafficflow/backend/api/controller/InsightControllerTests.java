@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(GlobalExceptionHandler.class)
 @DisplayName("InsightController MVC integration tests")
-class InsightControllerITTests {
+class InsightControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
@@ -42,15 +42,15 @@ class InsightControllerITTests {
         UUID secondId = UUID.randomUUID();
         when(insightService.generateInsights(List.of(firstId, secondId)))
                 .thenReturn(new TrafficInsightResponse(List.of(
-                        "Horario com maior volume agregado: 8h.",
-                        "Tipo de via com maior volume agregado: ARTERIAL."
+                        "Horário de pico: 8h.",
+                        "Tipo de via com maior volume: Via arterial."
                 )));
 
         mockMvc.perform(get("/api/traffic-insights")
                         .param("recordIds", firstId.toString(), secondId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.insights[0]").value("Horario com maior volume agregado: 8h."))
-                .andExpect(jsonPath("$.insights[1]").value("Tipo de via com maior volume agregado: ARTERIAL."));
+                .andExpect(jsonPath("$.insights[0]").value("Horário de pico: 8h."))
+                .andExpect(jsonPath("$.insights[1]").value("Tipo de via com maior volume: Via arterial."));
 
         verify(insightService).generateInsights(List.of(firstId, secondId));
     }

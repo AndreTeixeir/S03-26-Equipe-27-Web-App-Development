@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Import(PostgisTestcontainersConfiguration.class)
 @DisplayName("CORS default origins without APP_CORS_ALLOWED_ORIGINS")
-class CorsDefaultOriginsITTests {
+class CorsDefaultOriginsIT {
 
     @Autowired
     private MockMvc mockMvc;

@@ -2,6 +2,8 @@ package com.smarttrafficflow.backend.domain.trafficrecords.service;
 
 import com.smarttrafficflow.backend.api.dto.CreateTrafficRecordRequest;
 import com.smarttrafficflow.backend.api.dto.PagedTrafficRecordResponse;
+import com.smarttrafficflow.backend.api.dto.RecordIdsResponse;
+import com.smarttrafficflow.backend.config.RecordLimits;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordSummaryResponse;
 import com.smarttrafficflow.backend.domain.streets.entity.Street;
@@ -10,11 +12,11 @@ import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
 import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficRecordRepository;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,8 +42,44 @@ class TrafficRecordServiceTests {
     @Mock
     private StreetService streetService;
 
-    @InjectMocks
     private TrafficRecordService trafficRecordService;
+
+    @BeforeEach
+    void setUp() {
+        trafficRecordService = new TrafficRecordService(
+                trafficRecordRepository, streetService, new RecordLimits("3", "250"));
+    }
+
+    @Test
+    @DisplayName("returns the ids of the filtered records, up to the export limit, flagging a cut")
+    void returnsFilteredIdsFlaggingACut() {
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(trafficRecordRepository.findIdsByFilter(any(), any()))
+                .thenReturn(new PageImpl<>(ids, PageRequest.of(0, 3), 7));
+
+        RecordIdsResponse response = trafficRecordService.findFilteredIds("  Norte ");
+
+        assertThat(response.recordIds()).isEqualTo(ids);
+        assertThat(response.total()).isEqualTo(7);
+        assertThat(response.limit()).isEqualTo(3);
+        assertThat(response.truncated()).isTrue();
+        ArgumentCaptor<org.springframework.data.domain.Pageable> pageable =
+                ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(trafficRecordRepository).findIdsByFilter(org.mockito.ArgumentMatchers.eq("%norte%"), pageable.capture());
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(3);
+        assertThat(pageable.getValue().getPageNumber()).isZero();
+    }
+
+    @Test
+    @DisplayName("does not flag a cut when every match fits in the limit")
+    void doesNotFlagACutWhenEverythingFits() {
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(trafficRecordRepository.findIdsByFilter(any(), any()))
+                .thenReturn(new PageImpl<>(ids, PageRequest.of(0, 3), 3));
+
+        assertThat(trafficRecordService.findFilteredIds(null).truncated()).isFalse();
+        verify(trafficRecordRepository).findIdsByFilter(org.mockito.ArgumentMatchers.isNull(), any());
+    }
 
     @Test
     @DisplayName("creates a record by resolving the street and mapping the saved entity")
@@ -75,18 +113,48 @@ class TrafficRecordServiceTests {
     }
 
     @Test
-    @DisplayName("maps all street-based fields when reading all records")
-    void mapsStreetBasedFieldsWhenFindingAllRecords() {
-        when(trafficRecordRepository.findAllWithStreet()).thenReturn(List.of(
+    @DisplayName("maps all street-based fields when reading the most recent records")
+    void mapsStreetBasedFieldsWhenFindingTheLatestRecords() {
+        when(trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2))).thenReturn(List.of(
                 entity("ARTERIAL", 120, "Avenida Central", 101L),
                 entity("HIGHWAY", 250, "Rodovia Norte", 202L)
         ));
 
-        List<TrafficRecordResponse> records = trafficRecordService.findAll();
+        List<TrafficRecordResponse> records = trafficRecordService.findLatest(2);
 
         assertThat(records).hasSize(2);
         assertThat(records.get(0).streetName()).isEqualTo("Avenida Central");
         assertThat(records.get(1).streetOsmWayId()).isEqualTo(202L);
+    }
+
+    @Test
+    @DisplayName("maps the records found by id and keeps the repository order")
+    void mapsTheRecordsFoundById() {
+        List<UUID> recordIds = List.of(UUID.randomUUID(), UUID.randomUUID());
+        when(trafficRecordRepository.findAllByIdInWithStreet(recordIds)).thenReturn(List.of(
+                entity("LOCAL", 80, "Rua Um", 303L),
+                entity("HIGHWAY", 250, "Rodovia Norte", 202L)
+        ));
+
+        List<TrafficRecordResponse> records = trafficRecordService.findByIds(recordIds);
+
+        assertThat(records).extracting(TrafficRecordResponse::streetName).containsExactly("Rua Um", "Rodovia Norte");
+    }
+
+    @Test
+    @DisplayName("does not query the repository when no ids are provided")
+    void doesNotQueryWithoutIds() {
+        assertThat(trafficRecordService.findByIds(List.of())).isEmpty();
+        assertThat(trafficRecordService.findByIds(null)).isEmpty();
+        verify(trafficRecordRepository, never()).findAllByIdInWithStreet(any());
+    }
+
+    @Test
+    @DisplayName("counts every stored record")
+    void countsEveryStoredRecord() {
+        when(trafficRecordRepository.count()).thenReturn(12_345L);
+
+        assertThat(trafficRecordService.countAll()).isEqualTo(12_345L);
     }
 
     @Test
@@ -172,28 +240,6 @@ class TrafficRecordServiceTests {
     }
 
     @Test
-    @DisplayName("returns an empty list when no ids are provided for filtered entity lookup")
-    void returnsEmptyListForEmptyIdFilter() {
-        assertThat(trafficRecordService.findEntitiesByIds(List.of())).isEmpty();
-        verify(trafficRecordRepository, never()).findAllByIdInWithStreet(any());
-    }
-
-    @Test
-    @DisplayName("delegates filtered entity lookup to the repository when ids are provided")
-    void delegatesFilteredEntityLookup() {
-        List<UUID> recordIds = List.of(UUID.randomUUID());
-        when(trafficRecordRepository.findAllByIdInWithStreet(recordIds)).thenReturn(List.of(
-                entity("LOCAL", 80, "Rua Um", 303L)
-        ));
-
-        List<TrafficRecord> entities = trafficRecordService.findEntitiesByIds(recordIds);
-
-        assertThat(entities).hasSize(1);
-        assertThat(entities.get(0).getStreet().getName()).isEqualTo("Rua Um");
-        verify(trafficRecordRepository).findAllByIdInWithStreet(recordIds);
-    }
-
-    @Test
     @DisplayName("returns an empty list when no ids are provided for map features")
     void returnsEmptyMapFeaturesForEmptyIdFilter() {
         assertThat(trafficRecordService.findMapFeaturesByRecordIds(List.of())).isEmpty();
@@ -212,6 +258,15 @@ class TrafficRecordServiceTests {
 
         assertThat(features).containsExactly(featureView);
         verify(trafficRecordRepository).findMapFeaturesByRecordIds(recordIds);
+    }
+
+    @Test
+    @DisplayName("delegates the most recent map features to the repository")
+    void delegatesTheLatestMapFeatureQuery() {
+        TrafficRecordRepository.TrafficMapFeatureView featureView = mock(TrafficRecordRepository.TrafficMapFeatureView.class);
+        when(trafficRecordRepository.findLatestMapFeatures(250)).thenReturn(List.of(featureView));
+
+        assertThat(trafficRecordService.findLatestMapFeatures(250)).containsExactly(featureView);
     }
 
     private TrafficRecord entity(String roadType, int volume, String streetName, long streetOsmWayId) {

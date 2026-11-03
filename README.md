@@ -49,7 +49,7 @@ set -a && source .env && set +a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-> **Não rode `./mvnw test` nesse mesmo terminal.** Com `SPRING_DATASOURCE_URL` exportada, os testes deixam de usar o banco descartável (Testcontainers) e passam a apagar dados do banco apontado por ela. Rode os testes em outro terminal, sem as variáveis.
+> **Não rode `./mvnw test` nem `./mvnw verify` nesse mesmo terminal.** Com `SPRING_DATASOURCE_URL` exportada, os testes deixam de usar o banco descartável (Testcontainers) e passam a apagar dados do banco apontado por ela. Rode os testes em outro terminal, sem as variáveis.
 
 A importação de ruas vem desligada no `.env.example` (`APP_STREETS_IMPORT_ENABLED=false`). Para ligá-la, aponte `APP_STREETS_IMPORT_GEOJSON_PATH` para um arquivo local.
 
@@ -117,7 +117,7 @@ Query exemplo:
 
 ```bash
 cd backend
-./mvnw test
+./mvnw verify   # unitários (surefire, *Tests) e de integração (failsafe, *IT; precisa de Docker)
 ```
 
 ### Frontend

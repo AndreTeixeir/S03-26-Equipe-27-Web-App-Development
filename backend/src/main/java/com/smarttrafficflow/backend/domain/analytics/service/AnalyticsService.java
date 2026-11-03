@@ -1,15 +1,14 @@
 package com.smarttrafficflow.backend.domain.analytics.service;
 
 import com.smarttrafficflow.backend.api.dto.TrafficStatsResponse;
-import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
-import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
+import com.smarttrafficflow.backend.config.AppTimeZone;
+import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficAggregationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,42 +18,42 @@ public class AnalyticsService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsService.class);
 
-    private final TrafficRecordService trafficRecordService;
+    private final TrafficAggregationRepository aggregationRepository;
+    private final AppTimeZone timeZone;
 
-    public AnalyticsService(TrafficRecordService trafficRecordService) {
-        this.trafficRecordService = trafficRecordService;
+    public AnalyticsService(TrafficAggregationRepository aggregationRepository, AppTimeZone timeZone) {
+        this.aggregationRepository = aggregationRepository;
+        this.timeZone = timeZone;
     }
 
     public TrafficStatsResponse getStats(String groupBy, List<UUID> recordIds) {
-        List<TrafficRecord> records = (recordIds == null || recordIds.isEmpty())
-                ? trafficRecordService.findAllEntities()
-                : trafficRecordService.findEntitiesByIds(recordIds);
-        log.info("Analytics requested with groupBy={} using {} records", groupBy, records.size());
-        Map<String, Integer> aggregated = new LinkedHashMap<>();
+        StatsGroupBy dimension = StatsGroupBy.parse(groupBy);
+        Map<String, Long> totals = aggregationRepository.sumVolumeBy(dimension, timeZone.id(), recordIds);
 
-        for (TrafficRecord record : records) {
-            String key = switch (groupBy) {
-                case "hour" -> String.format("%02d", record.getTimestamp().getHour());
-                case "weekday" -> normalizeWeekday(record.getTimestamp().getDayOfWeek());
-                case "roadType" -> safeValue(record.getRoadType(), "UNKNOWN");
-                default -> {
-                    log.warn("Analytics requested with invalid groupBy={}", groupBy);
-                    throw new IllegalArgumentException("groupBy invalido: " + groupBy);
+        List<String> labels = new ArrayList<>();
+        List<Long> values = new ArrayList<>();
+        switch (dimension) {
+            case HOUR -> {
+                for (int hour = 0; hour < 24; hour++) {
+                    labels.add(String.format("%02d", hour));
+                    values.add(totals.getOrDefault(String.valueOf(hour), 0L));
                 }
-            };
-
-            aggregated.merge(key, record.getVehicleVolume(), Integer::sum);
+            }
+            case WEEKDAY -> {
+                for (DayOfWeek day : DayOfWeek.values()) {
+                    labels.add(day.name());
+                    values.add(totals.getOrDefault(String.valueOf(day.getValue()), 0L));
+                }
+            }
+            case ROAD_TYPE -> {
+                for (String roadType : RoadTypes.inPresentationOrder(totals.keySet())) {
+                    labels.add(roadType);
+                    values.add(totals.get(roadType));
+                }
+            }
         }
 
-        log.info("Analytics generated {} buckets for groupBy={}", aggregated.size(), groupBy);
-        return new TrafficStatsResponse(new ArrayList<>(aggregated.keySet()), new ArrayList<>(aggregated.values()));
-    }
-
-    private String normalizeWeekday(DayOfWeek dayOfWeek) {
-        return dayOfWeek.name();
-    }
-
-    private String safeValue(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
+        log.info("Analytics requested with groupBy={} returned {} buckets", groupBy, labels.size());
+        return new TrafficStatsResponse(labels, values);
     }
 }

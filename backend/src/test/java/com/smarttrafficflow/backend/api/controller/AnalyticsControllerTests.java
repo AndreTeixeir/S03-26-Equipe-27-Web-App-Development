@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(GlobalExceptionHandler.class)
 @DisplayName("AnalyticsController MVC integration tests")
-class AnalyticsControllerITTests {
+class AnalyticsControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
@@ -41,7 +41,7 @@ class AnalyticsControllerITTests {
         UUID firstId = UUID.randomUUID();
         UUID secondId = UUID.randomUUID();
         when(analyticsService.getStats("hour", List.of(firstId, secondId)))
-                .thenReturn(new TrafficStatsResponse(List.of("08", "17"), List.of(150, 200)));
+                .thenReturn(new TrafficStatsResponse(List.of("08", "17"), List.of(150L, 200L)));
 
         mockMvc.perform(get("/api/traffic-stats")
                         .param("groupBy", "hour")
@@ -58,7 +58,7 @@ class AnalyticsControllerITTests {
     void returnsStatsFromFilterEndpoint() throws Exception {
         UUID recordId = UUID.randomUUID();
         when(analyticsService.getStats("roadType", List.of(recordId)))
-                .thenReturn(new TrafficStatsResponse(List.of("ARTERIAL"), List.of(180)));
+                .thenReturn(new TrafficStatsResponse(List.of("ARTERIAL"), List.of(180L)));
 
         mockMvc.perform(post("/api/traffic-stats/filter")
                         .contentType(MediaType.APPLICATION_JSON)

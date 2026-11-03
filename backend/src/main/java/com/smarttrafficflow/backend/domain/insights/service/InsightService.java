@@ -1,15 +1,15 @@
 package com.smarttrafficflow.backend.domain.insights.service;
 
 import com.smarttrafficflow.backend.api.dto.TrafficInsightResponse;
-import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
-import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
+import com.smarttrafficflow.backend.config.AppTimeZone;
+import com.smarttrafficflow.backend.domain.analytics.service.RoadTypes;
+import com.smarttrafficflow.backend.domain.analytics.service.StatsGroupBy;
+import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficAggregationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,50 +19,50 @@ public class InsightService {
 
     private static final Logger log = LoggerFactory.getLogger(InsightService.class);
 
-    private final TrafficRecordService trafficRecordService;
+    private final TrafficAggregationRepository aggregationRepository;
+    private final AppTimeZone timeZone;
 
-    public InsightService(TrafficRecordService trafficRecordService) {
-        this.trafficRecordService = trafficRecordService;
+    public InsightService(TrafficAggregationRepository aggregationRepository, AppTimeZone timeZone) {
+        this.aggregationRepository = aggregationRepository;
+        this.timeZone = timeZone;
     }
 
     public TrafficInsightResponse generateInsights(List<UUID> recordIds) {
-        List<TrafficRecord> records = (recordIds == null || recordIds.isEmpty())
-                ? trafficRecordService.findAllEntities()
-                : trafficRecordService.findEntitiesByIds(recordIds);
+        Map<String, Long> byHour = aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, timeZone.id(), recordIds);
         List<String> insights = new ArrayList<>();
-        log.info("Generating insights from {} records", records.size());
 
-        if (records.isEmpty()) {
+        Map<String, Long> byRoadType = byHour.isEmpty()
+                ? Map.of()
+                : aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, timeZone.id(), recordIds);
+
+        // Both queries read the same records, so they are empty together. If they ever disagree, say there is no data
+        // instead of failing on a missing road type.
+        if (byHour.isEmpty() || byRoadType.isEmpty()) {
             insights.add("Sem dados suficientes para gerar insights.");
             log.warn("Insight generation requested without data");
             return new TrafficInsightResponse(insights);
         }
 
-        Map<Integer, Integer> byHour = new HashMap<>();
-        Map<String, Integer> byRoadType = new HashMap<>();
-
-        for (TrafficRecord record : records) {
-            byHour.merge(record.getTimestamp().getHour(), record.getVehicleVolume(), Integer::sum);
-            byRoadType.merge(safeValue(record.getRoadType(), "UNKNOWN"), record.getVehicleVolume(), Integer::sum);
+        // Ties keep the first candidate in the presentation order, so the same data gives the same text.
+        int peakHour = -1;
+        for (int hour = 0; hour < 24; hour++) {
+            Long total = byHour.get(String.valueOf(hour));
+            if (total != null && (peakHour < 0 || total > byHour.get(String.valueOf(peakHour)))) {
+                peakHour = hour;
+            }
         }
 
-        Map.Entry<Integer, Integer> peakHour = byHour.entrySet().stream()
-                .max(Map.Entry.comparingByValue())
-                .orElseThrow();
+        String peakRoadType = null;
+        for (String roadType : RoadTypes.inPresentationOrder(byRoadType.keySet())) {
+            if (peakRoadType == null || byRoadType.get(roadType) > byRoadType.get(peakRoadType)) {
+                peakRoadType = roadType;
+            }
+        }
 
-        Map.Entry<String, Integer> peakRoadType = byRoadType.entrySet().stream()
-                .max(Comparator.comparingInt(Map.Entry::getValue))
-                .orElseThrow();
+        insights.add("Horário de pico: " + peakHour + "h.");
+        insights.add("Tipo de via com maior volume: " + RoadTypes.label(peakRoadType) + ".");
 
-        insights.add("Horario com maior volume agregado: " + peakHour.getKey() + "h.");
-        insights.add("Tipo de via com maior volume agregado: " + peakRoadType.getKey() + ".");
-
-        log.info("Generated {} insights (peakHour={}h, peakRoadType={})",
-                insights.size(), peakHour.getKey(), peakRoadType.getKey());
+        log.info("Generated {} insights (peakHour={}h, peakRoadType={})", insights.size(), peakHour, peakRoadType);
         return new TrafficInsightResponse(insights);
-    }
-
-    private String safeValue(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
     }
 }

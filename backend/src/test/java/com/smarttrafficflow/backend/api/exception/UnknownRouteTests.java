@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(GlobalExceptionHandler.class)
 @DisplayName("Unknown route MVC integration tests")
-class UnknownRouteITTests {
+class UnknownRouteTests {
 
     @Autowired
     private MockMvc mockMvc;

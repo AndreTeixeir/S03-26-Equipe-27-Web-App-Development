@@ -11,27 +11,24 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "dev"})
 @Import(PostgisTestcontainersConfiguration.class)
-@DisplayName("API docs exposure outside the dev profile")
-class ApiDocsDisabledByDefaultITTests {
+@DisplayName("API docs exposure in the dev profile")
+class ApiDocsEnabledInDevIT {
 
     @Autowired
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("does not publish the OpenAPI document")
-    void doesNotPublishOpenApiDocument() throws Exception {
-        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
-    }
-
-    @Test
-    @DisplayName("does not publish the Swagger UI")
-    void doesNotPublishSwaggerUi() throws Exception {
-        mockMvc.perform(get("/swagger-ui.html")).andExpect(status().isNotFound());
+    @DisplayName("publishes the OpenAPI document")
+    void publishesOpenApiDocument() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openapi").exists());
     }
 }

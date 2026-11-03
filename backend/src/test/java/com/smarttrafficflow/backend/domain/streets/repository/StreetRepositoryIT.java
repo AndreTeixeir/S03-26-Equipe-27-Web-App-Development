@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import(PostgisTestcontainersConfiguration.class)
 @DisplayName("StreetRepository integration tests")
-class StreetRepositoryTests {
+class StreetRepositoryIT {
 
     @Autowired
     private StreetRepository streetRepository;
@@ -94,6 +94,17 @@ class StreetRepositoryTests {
         jdbcTemplate.update("DELETE FROM streets");
 
         assertThat(streetRepository.findRandomOsmWayIds(5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("stores different streets that share the same name")
+    void storesStreetsWithTheSameName() {
+        insertStreet(505L, "Rua Repetida");
+        insertStreet(606L, "Rua Repetida");
+
+        assertThat(streetRepository.countByNameFilter("Rua Repetida")).isEqualTo(2);
+        assertThat(streetRepository.findByOsmWayId(505L)).get().extracting(Street::getName).isEqualTo("Rua Repetida");
+        assertThat(streetRepository.findByOsmWayId(606L)).get().extracting(Street::getName).isEqualTo("Rua Repetida");
     }
 
     private void insertStreet(long osmWayId, String name) {

@@ -4,8 +4,8 @@ import com.smarttrafficflow.backend.api.dto.RecordIdsFilterRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.smarttrafficflow.backend.domain.map.service.TrafficMapService;
 import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficRecordRepository;
-import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -31,11 +32,11 @@ public class MapController {
     private static final String MEDIUM_COLOR = "#FFB24A";
     private static final String HIGH_COLOR = "#E04545";
 
-    private final TrafficRecordService trafficRecordService;
+    private final TrafficMapService trafficMapService;
     private final ObjectMapper objectMapper;
 
-    public MapController(TrafficRecordService trafficRecordService, ObjectMapper objectMapper) {
-        this.trafficRecordService = trafficRecordService;
+    public MapController(TrafficMapService trafficMapService, ObjectMapper objectMapper) {
+        this.trafficMapService = trafficMapService;
         this.objectMapper = objectMapper;
     }
 
@@ -49,16 +50,25 @@ public class MapController {
         return buildMapResponse(request.recordIds(), "POST /api/traffic-map/filter");
     }
 
+    /**
+     * A GeoJSON FeatureCollection. The extra member {@code meta} (allowed by GeoJSON) tells what the map shows:
+     * the {@code latest} records up to a ceiling, or the {@code selection}.
+     */
     private Map<String, Object> buildMapResponse(List<UUID> recordIds, String source) {
-        if (recordIds == null || recordIds.isEmpty()) {
-            log.info("{} - no recordIds selected, returning empty FeatureCollection", source);
-            return Map.of("type", "FeatureCollection", "features", List.of());
-        }
+        TrafficMapService.MapContent content = trafficMapService.findContent(recordIds);
+        List<Map<String, Object>> features = content.features().stream().map(this::toFeature).toList();
+        log.info("{} - returning {} features (scope={})", source, features.size(), content.scope());
 
-        List<TrafficRecordRepository.TrafficMapFeatureView> featuresView = trafficRecordService.findMapFeaturesByRecordIds(recordIds);
-        List<Map<String, Object>> features = featuresView.stream().map(this::toFeature).toList();
-        log.info("{} - returning {} features from {} selected records", source, features.size(), recordIds.size());
-        return Map.of("type", "FeatureCollection", "features", features);
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("scope", content.scope());
+        meta.put("limit", content.limit());
+        meta.put("count", features.size());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("type", "FeatureCollection");
+        response.put("features", features);
+        response.put("meta", meta);
+        return response;
     }
 
     private Map<String, Object> toFeature(TrafficRecordRepository.TrafficMapFeatureView featureView) {

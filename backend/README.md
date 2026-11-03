@@ -28,7 +28,7 @@ Execução no perfil padrão:
 
 ```bash
 ./mvnw clean package
-./mvnw test
+./mvnw verify   # unitários (surefire, *Tests) e de integração (failsafe, *IT; precisa de Docker)
 ```
 
 ## Variáveis de ambiente
@@ -44,6 +44,9 @@ Variáveis importantes:
 - `APP_STREETS_IMPORT_GEOJSON_PATH`
 - `APP_RATE_LIMIT_SIMULATIONS_PER_MINUTE` (padrão `5`): requisições por minuto, por IP, em `POST /api/simulations/generate`
 - `APP_RATE_LIMIT_TRAFFIC_RECORDS_PER_MINUTE` (padrão `30`): requisições por minuto, por IP, em `POST /api/traffic-records`
+- `APP_TIMEZONE` (padrão `America/Sao_Paulo`): fuso em que a hora e o dia da semana dos registros são observados nos gráficos e nos insights. Um fuso inválido ou vazio impede a aplicação de subir
+- `APP_EXPORT_MAX_RECORDS` (padrão `10000`, de 1 a 50000): teto de registros por exportação (CSV e JSON), também usado em "selecionar todos os filtrados" e no tamanho da seleção enviada para exportar. Sem seleção, a exportação traz os registros mais recentes até esse teto
+- `APP_MAP_MAX_RECORDS` (padrão `250`, de 1 a 50000): teto de registros no mapa quando nada está selecionado (os mais recentes). Com seleção, o mapa mostra a seleção inteira
 - `APP_CLIENT_IP_HEADER` (padrão vazio): cabeçalho com o IP real do cliente, usado pelo limite por IP quando há um proxy na frente da API. O Docker Compose define `X-Forwarded-For`. Fora dele deixe vazio, porque um cliente poderia forjar o cabeçalho para burlar o limite
 - `SPRINGDOC_ENABLED` (padrão `false`): publica `/swagger-ui.html` e `/v3/api-docs`; no perfil `dev` eles ficam sempre ligados
 

@@ -1,13 +1,16 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Polyline, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
+import { peakHourLabel, roadTypeLabel, trafficLevelLabel, weatherLabel, weekdayLabel } from "./lib/labels";
+import type { ExportResult } from "./lib/api";
 import {
   API_BASE_URL,
   ApiError,
   createTrafficRecord,
   generateSimulation,
   getExport,
+  getFilteredRecordIds,
   getTrafficInsights,
   getTrafficMap,
   getTrafficRecordSummary,
@@ -47,6 +50,8 @@ type ChartCardProps = {
   tone: "signal" | "ember" | "ink";
   stats: TrafficStatsResponse;
   chart: "bar" | "area";
+  /** How each label of the API (a code, such as MONDAY) is shown on the axis. */
+  formatChartLabel?: (label: string) => string;
 };
 
 type ViewMode = "home" | "workspace";
@@ -89,6 +94,9 @@ function formatLabel(value: string) {
   return value.replace(/_/g, " ").toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 }
 
+// Room for the widest compact tick (such as "999 mil") plus the gap to the axis; 44 cut longer numbers.
+const yAxisWidth = 64;
+
 function formatCompactNumber(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     notation: "compact",
@@ -111,6 +119,42 @@ function formatDatetimeLocalValue(iso: string) {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
+const timestampRequiredMessage = "Informe a data e a hora do registro.";
+
+/** The date typed in the field, or null when it is empty or not a valid date. */
+function parseTimestampInput(value: string): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatInteger(value: number) {
+  return value.toLocaleString("pt-BR");
+}
+
+function countRecords(count: number) {
+  return `${formatInteger(count)} ${count === 1 ? "registro" : "registros"}`;
+}
+
+/** What was exported: the selection, the whole base, or only the most recent records when the file was cut. */
+function describeExport(format: "csv" | "json", result: ExportResult, hasSelection: boolean) {
+  const label = format.toUpperCase();
+  const { exported, total } = result;
+
+  if (exported === null) {
+    return `Exportação preparada no formato ${label}.`;
+  }
+  if (hasSelection) {
+    return `Exportação preparada no formato ${label}: ${countRecords(exported)} ${exported === 1 ? "selecionado" : "selecionados"}.`;
+  }
+  if (total !== null && exported < total) {
+    return `Exportados os ${formatInteger(exported)} registros mais recentes de ${formatInteger(total)}.`;
+  }
+  return `Exportação preparada no formato ${label}: ${countRecords(exported)}.`;
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const href = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -120,26 +164,11 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(href), 120);
 }
 
-function buildChartData(stats: TrafficStatsResponse) {
+function buildChartData(stats: TrafficStatsResponse, formatChartLabel: (label: string) => string) {
   return stats.labels.map((label, index) => ({
-    label: formatLabel(label),
+    label: formatChartLabel(label),
     value: stats.values[index] ?? 0
   }));
-}
-
-function getPeakLabel(stats: TrafficStatsResponse) {
-  if (stats.labels.length === 0) {
-    return "Sem dados";
-  }
-
-  let peakIndex = 0;
-  stats.values.forEach((value, index) => {
-    if (value > (stats.values[peakIndex] ?? 0)) {
-      peakIndex = index;
-    }
-  });
-
-  return formatLabel(stats.labels[peakIndex] ?? "Desconhecido");
 }
 
 function getLatestTimestamp(timestamp: string | null) {
@@ -157,8 +186,8 @@ function areSameSelection(left: string[], right: string[]) {
   return right.every((id) => leftSet.has(id));
 }
 
-function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
-  const data = buildChartData(stats);
+function ChartCard({ eyebrow, title, tone, stats, chart, formatChartLabel = formatLabel }: ChartCardProps) {
+  const data = buildChartData(stats, formatChartLabel);
   const areaTone = tone === "signal" ? "#f25c3a" : tone === "ember" ? "#ffb24a" : "#123c63";
 
   return (
@@ -173,12 +202,18 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
             <BarChart data={data} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(18, 60, 99, 0.12)" vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} />
-              <YAxis tickLine={false} axisLine={false} tickMargin={10} width={44} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                width={yAxisWidth}
+                tickFormatter={formatCompactNumber}
+              />
               <Tooltip
                 cursor={{ fill: "rgba(242, 92, 58, 0.08)" }}
                 contentStyle={{ borderRadius: 18, border: "1px solid rgba(18, 60, 99, 0.12)" }}
               />
-              <Bar dataKey="value" radius={[12, 12, 0, 0]}>
+              <Bar dataKey="value" name="Veículos" radius={[12, 12, 0, 0]}>
                 {data.map((entry, index) => (
                   <Cell key={`${entry.label}-${index}`} fill={chartPalette[index % chartPalette.length]} />
                 ))}
@@ -194,7 +229,13 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(18, 60, 99, 0.12)" vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} />
-              <YAxis tickLine={false} axisLine={false} tickMargin={10} width={44} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                width={yAxisWidth}
+                tickFormatter={formatCompactNumber}
+              />
               <Tooltip
                 cursor={{ stroke: "rgba(18, 60, 99, 0.15)", strokeWidth: 1 }}
                 contentStyle={{ borderRadius: 18, border: "1px solid rgba(18, 60, 99, 0.12)" }}
@@ -202,6 +243,7 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
               <Area
                 type="monotone"
                 dataKey="value"
+                name="Veículos"
                 stroke={areaTone}
                 strokeWidth={3}
                 fill={`url(#gradient-${tone})`}
@@ -235,7 +277,37 @@ function getMapCenter(mapData: MapFeatureCollection): [number, number] {
   return [lat, lng];
 }
 
+/** What the map shows, in a sentence: the most recent records, or the selected ones. */
+function describeMapContent(mapData: MapFeatureCollection): string | null {
+  const meta = mapData.meta;
+  if (!meta) {
+    return null;
+  }
+
+  const count = meta.count.toLocaleString("pt-BR");
+  if (meta.scope === "latest") {
+    return meta.count === 1 ? "Mostrando o registro mais recente" : `Mostrando os ${count} registros mais recentes`;
+  }
+  return meta.count === 1 ? "Mostrando 1 registro selecionado" : `Mostrando ${count} registros selecionados`;
+}
+
+// The map keeps the view it was created with, so it must be told to frame the new streets when the data changes.
+function FitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length > 0) {
+      map.fitBounds(positions, { padding: [24, 24], maxZoom: 16 });
+    }
+  }, [map, positions]);
+
+  return null;
+}
+
 function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardProps) {
+  const positions = useMemo(() => mapData.features.flatMap(toLeafletPositions), [mapData]);
+  const legend = describeMapContent(mapData);
+
   return (
     <section className="card map-card reveal reveal-4">
       <div className="section-heading">
@@ -246,11 +318,14 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
         <p className="map-empty">{emptyText}</p>
       ) : (
         <div className="map-shell">
-          <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={true}>
+          {legend ? <p className="map-legend">{legend}</p> : null}
+          <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={false}>
+            <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+            <FitBounds positions={positions} />
             {mapData.features.map((point) => (
               <Polyline
                 key={`${point.properties.recordId}-${point.properties.streetId}`}
@@ -262,7 +337,7 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
                   <br />
                   Volume: {point.properties.vehicleVolume}
                   <br />
-                  Nível: {point.properties.trafficLevel}
+                  Nível: {trafficLevelLabel(point.properties.trafficLevel)}
                 </Popup>
               </Polyline>
             ))}
@@ -290,71 +365,125 @@ export default function App() {
   const [streetOptions, setStreetOptions] = useState<{ id: string; osmWayId: number; name: string }[]>([]);
   const [streetSearchLoading, setStreetSearchLoading] = useState(false);
   const [recordForm, setRecordForm] = useState<CreateTrafficRecordRequest>(recordTemplate);
+  // The date field keeps the text the person typed (empty while cleared); it only becomes an ISO date on save.
+  const [timestampInput, setTimestampInput] = useState(() => formatDatetimeLocalValue(new Date().toISOString()));
+  const [timestampError, setTimestampError] = useState<string | null>(null);
   const [simulationForm, setSimulationForm] = useState<SimulationRequest>(simulationTemplate);
   const [tableQuery, setTableQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState("Conectando à central de tráfego.");
   const [loading, setLoading] = useState(true);
+  // "Conectado" is only true while the last dashboard load succeeded.
+  const [lastLoadSucceeded, setLastLoadSucceeded] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [bulkSelectionLoading, setBulkSelectionLoading] = useState(false);
+  // Warning shown when "select all filtered" had to stop at the backend ceiling.
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"record" | "simulation" | "export" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewMode>("home");
   const deferredQuery = useDeferredValue(tableQuery);
   const deferredStreetQuery = useDeferredValue(streetQuery);
 
+  // Each load takes a number. A response only updates the screen if its number is still the latest one,
+  // so a slow, old response never overwrites a newer one.
+  const dashboardRequestId = useRef(0);
+  const recordsRequestId = useRef(0);
+  // A newer load, or leaving the page, cancels the requests of the previous one. In development, React runs the
+  // effects twice on purpose; cancelling the first run keeps it from competing with the second.
+  const dashboardAbort = useRef<AbortController | null>(null);
+  const recordsAbort = useRef<AbortController | null>(null);
+
   async function refreshDashboard(recordIds: string[] = appliedRecordIds) {
+    const requestId = ++dashboardRequestId.current;
+    const isLatest = () => requestId === dashboardRequestId.current;
+    dashboardAbort.current?.abort();
+    const controller = new AbortController();
+    dashboardAbort.current = controller;
+    const options = { signal: controller.signal };
     setLoading(true);
     setError(null);
 
     try {
       const [summary, byHour, byWeekday, byRoadType, insights, mapData] = await Promise.all([
-        getTrafficRecordSummary(recordIds),
-        getTrafficStats("hour", recordIds),
-        getTrafficStats("weekday", recordIds),
-        getTrafficStats("roadType", recordIds),
-        getTrafficInsights(recordIds),
-        getTrafficMap(recordIds)
+        getTrafficRecordSummary(recordIds, options),
+        getTrafficStats("hour", recordIds, options),
+        getTrafficStats("weekday", recordIds, options),
+        getTrafficStats("roadType", recordIds, options),
+        getTrafficInsights(recordIds, options),
+        getTrafficMap(recordIds, options)
       ]);
+
+      if (!isLatest()) {
+        return;
+      }
 
       startTransition(() => {
         setDashboard({ summary, byHour, byWeekday, byRoadType, insights, mapData });
       });
 
+      setLastLoadSucceeded(true);
       setStatusMessage(`Conexão ativa estabelecida com ${API_BASE_URL}.`);
     } catch (caughtError) {
+      if (!isLatest()) {
+        return;
+      }
+
       const message =
         caughtError instanceof ApiError ? caughtError.message : "A central não conseguiu alcançar o backend.";
+      setLastLoadSucceeded(false);
       setError(message);
       setStatusMessage("O backend precisa de atenção.");
     } finally {
-      setLoading(false);
+      if (isLatest()) {
+        setLoading(false);
+      }
     }
   }
 
   async function refreshRecordsPage(page: number, query: string) {
+    const requestId = ++recordsRequestId.current;
+    const isLatest = () => requestId === recordsRequestId.current;
+    recordsAbort.current?.abort();
+    const controller = new AbortController();
+    recordsAbort.current = controller;
     setRecordsLoading(true);
     setError(null);
 
     try {
-      const nextPage = await getTrafficRecords({ page, size: emptyRecordsPage.size, query });
+      const nextPage = await getTrafficRecords(
+        { page, size: emptyRecordsPage.size, query },
+        { signal: controller.signal }
+      );
+      if (!isLatest()) {
+        return;
+      }
+
       startTransition(() => {
         setRecordsPage(nextPage);
       });
     } catch (caughtError) {
+      if (!isLatest()) {
+        return;
+      }
+
       const message =
         caughtError instanceof ApiError ? caughtError.message : "Não foi possível carregar os registros paginados.";
       setError(message);
     } finally {
-      setRecordsLoading(false);
+      if (isLatest()) {
+        setRecordsLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     void refreshDashboard([]);
+    return () => dashboardAbort.current?.abort();
   }, []);
 
   useEffect(() => {
     void refreshRecordsPage(recordsRequest.page, recordsRequest.query);
+    return () => recordsAbort.current?.abort();
   }, [recordsRequest]);
 
   useEffect(() => {
@@ -401,13 +530,20 @@ export default function App() {
 
   async function handleRecordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const timestamp = parseTimestampInput(timestampInput);
+    if (!timestamp) {
+      setTimestampError(timestampRequiredMessage);
+      return;
+    }
+
     setBusyAction("record");
     setError(null);
 
     try {
       await createTrafficRecord({
         ...recordForm,
-        timestamp: new Date(recordForm.timestamp).toISOString()
+        timestamp: timestamp.toISOString()
       });
       setStatusMessage("Novo registro de tráfego adicionado ao painel.");
       await Promise.all([refreshDashboard(), refreshRecordsPage(0, recordsRequest.query)]);
@@ -445,9 +581,10 @@ export default function App() {
     setError(null);
 
     try {
-      const blob = await getExport(format);
-      downloadBlob(blob, format === "csv" ? "traffic-data.csv" : "traffic-data.json");
-      setStatusMessage(`Exportação preparada no formato ${format.toUpperCase()}.`);
+      // The applied selection is the context the cards show, so it is also what gets exported.
+      const result = await getExport(format, appliedRecordIds);
+      downloadBlob(result.blob, format === "csv" ? "traffic-data.csv" : "traffic-data.json");
+      setStatusMessage(describeExport(format, result, appliedRecordIds.length > 0));
     } catch (caughtError) {
       const message =
         caughtError instanceof ApiError ? caughtError.message : "Não foi possível exportar os dados de tráfego.";
@@ -472,27 +609,7 @@ export default function App() {
     );
   }
 
-  async function getAllFilteredRecordIds(query: string) {
-    const firstPage = await getTrafficRecords({ page: 0, size: emptyRecordsPage.size, query });
-    const recordIds = firstPage.items.map((record) => record.id);
-
-    if (firstPage.totalPages <= 1) {
-      return recordIds;
-    }
-
-    const remainingPages = await Promise.all(
-      Array.from({ length: firstPage.totalPages - 1 }, (_, index) =>
-        getTrafficRecords({ page: index + 1, size: firstPage.size, query })
-      )
-    );
-
-    remainingPages.forEach((page) => {
-      recordIds.push(...page.items.map((record) => record.id));
-    });
-
-    return recordIds;
-  }
-
+  // One request brings the ids of every record that matches the filter, up to the backend ceiling.
   async function toggleAllFilteredSelection() {
     if (recordsPage.totalItems === 0) {
       return;
@@ -502,18 +619,26 @@ export default function App() {
     setError(null);
 
     try {
-      const filteredRecordIds = await getAllFilteredRecordIds(recordsRequest.query);
+      const filtered = await getFilteredRecordIds(recordsRequest.query);
+      const filteredRecordIds = filtered.recordIds;
       if (filteredRecordIds.length === 0) {
         return;
       }
 
-      setStagedRecordIds((current) => {
-        const filteredRecordIdSet = new Set(filteredRecordIds);
-        const allSelected = filteredRecordIds.every((id) => current.includes(id));
-        return allSelected
+      const filteredRecordIdSet = new Set(filteredRecordIds);
+      const stagedRecordIdSet = new Set(stagedRecordIds);
+      const allSelected = filteredRecordIds.every((id) => stagedRecordIdSet.has(id));
+
+      setStagedRecordIds((current) =>
+        allSelected
           ? current.filter((id) => !filteredRecordIdSet.has(id))
-          : Array.from(new Set([...current, ...filteredRecordIds]));
-      });
+          : Array.from(new Set([...current, ...filteredRecordIds]))
+      );
+      setSelectionNotice(
+        !allSelected && filtered.truncated
+          ? `Selecionados os ${filtered.limit.toLocaleString("pt-BR")} registros mais recentes de ${filtered.total.toLocaleString("pt-BR")} encontrados.`
+          : null
+      );
     } catch (caughtError) {
       const message =
         caughtError instanceof ApiError ? caughtError.message : "Não foi possível atualizar a seleção filtrada.";
@@ -525,6 +650,7 @@ export default function App() {
 
   function clearSelection() {
     setStagedRecordIds([]);
+    setSelectionNotice(null);
   }
 
   function selectStreetOption(osmWayId: number, name: string) {
@@ -551,13 +677,13 @@ export default function App() {
     },
     {
       label: "Janela de pico",
-      value: getPeakLabel(dashboard.byHour),
+      value: peakHourLabel(dashboard.byHour),
       meta: "Maior concentração nos dados atuais"
     },
     {
-      label: "Ruas mapeadas",
+      label: "Ruas com registros",
       value: String(dashboard.summary.uniqueStreetCount),
-      meta: "Corredores monitorados no contexto atual"
+      meta: "Ruas distintas nos registros do contexto atual"
     },
     {
       label: "Carga média",
@@ -625,9 +751,13 @@ export default function App() {
             </button>
           </div>
           <div className="status-strip">
-            <span className={`status-dot ${loading ? "status-dot--loading" : ""}`} />
+            <span
+              className={`status-dot ${loading ? "status-dot--loading" : ""} ${
+                !loading && !lastLoadSucceeded ? "status-dot--offline" : ""
+              }`.trim()}
+            />
             <strong>Pulso ao vivo</strong>
-            <span>{loading ? "Sincronizando" : "Conectado"}</span>
+            <span>{loading ? "Sincronizando" : lastLoadSucceeded ? "Conectado" : "Sem conexão"}</span>
           </div>
           <div className="hero-metrics">
             <div>
@@ -683,15 +813,29 @@ export default function App() {
 
             <div className="charts-grid reveal reveal-3">
               <ChartCard eyebrow="Cadência de volume" title="Curva horária de pressão" tone="signal" chart="area" stats={dashboard.byHour} />
-              <ChartCard eyebrow="Padrão semanal" title="Distribuição por dia útil" tone="ink" chart="bar" stats={dashboard.byWeekday} />
-              <ChartCard eyebrow="Mistura viária" title="Divisão por tipo de via" tone="ember" chart="bar" stats={dashboard.byRoadType} />
+              <ChartCard
+                eyebrow="Padrão semanal"
+                title="Distribuição por dia da semana"
+                tone="ink"
+                chart="bar"
+                stats={dashboard.byWeekday}
+                formatChartLabel={weekdayLabel}
+              />
+              <ChartCard
+                eyebrow="Mistura viária"
+                title="Divisão por tipo de via"
+                tone="ember"
+                chart="bar"
+                stats={dashboard.byRoadType}
+                formatChartLabel={roadTypeLabel}
+              />
             </div>
 
             <TrafficMapCard
               eyebrow="Visão da rede"
               title="Monitor do mapa de tráfego"
               mapData={dashboard.mapData}
-              emptyText="Selecione registros em “Formulários e registros” para visualizar as ruas coloridas."
+              emptyText="Ainda não há registros para plotar no mapa."
             />
 
             <section className="card insight-card reveal reveal-4">
@@ -736,14 +880,18 @@ export default function App() {
                     Data e hora
                     <input
                       type="datetime-local"
-                      value={formatDatetimeLocalValue(recordForm.timestamp)}
-                      onChange={(event) =>
-                        setRecordForm((current) => ({
-                          ...current,
-                          timestamp: new Date(event.target.value).toISOString()
-                        }))
-                      }
+                      value={timestampInput}
+                      aria-invalid={timestampError ? true : undefined}
+                      onChange={(event) => {
+                        setTimestampInput(event.target.value);
+                        setTimestampError(parseTimestampInput(event.target.value) ? null : timestampRequiredMessage);
+                      }}
                     />
+                    {timestampError ? (
+                      <p className="form-error" role="alert">
+                        {timestampError}
+                      </p>
+                    ) : null}
                   </label>
                   <label>
                     Tipo de via
@@ -755,7 +903,7 @@ export default function App() {
                     >
                       {roadTypeOptions.map((option) => (
                         <option key={option} value={option}>
-                          {option}
+                          {roadTypeLabel(option)}
                         </option>
                       ))}
                     </select>
@@ -886,9 +1034,9 @@ export default function App() {
 
             <TrafficMapCard
               eyebrow="Mapa operacional"
-              title="Ruas selecionadas"
+              title="Ruas no mapa"
               mapData={dashboard.mapData}
-              emptyText="Selecione registros abaixo para plotar as ruas nesta visão e também na página de insights."
+              emptyText="Ainda não há registros para plotar no mapa."
             />
 
             <section className="card table-card reveal reveal-5">
@@ -948,6 +1096,11 @@ export default function App() {
               {hasPendingSelectionChanges ? (
                 <p className="table-selection-note">Há mudanças pendentes. Clique em “Aplicar seleção”.</p>
               ) : null}
+              {selectionNotice ? (
+                <p className="table-selection-note" role="status">
+                  {selectionNotice}
+                </p>
+              ) : null}
 
               <div className="table-scroll">
                 <table>
@@ -987,10 +1140,10 @@ export default function App() {
                             />
                           </td>
                           <td>{formatDateTime(record.timestamp)}</td>
-                          <td>{formatLabel(record.roadType)}</td>
+                          <td>{roadTypeLabel(record.roadType)}</td>
                           <td>{record.vehicleVolume}</td>
                           <td>{record.streetName ?? "Não atribuída"}</td>
-                          <td>{record.weather ?? "n/d"}</td>
+                          <td>{record.weather ? weatherLabel(record.weather) : "n/d"}</td>
                           <td>{record.eventType ?? "n/d"}</td>
                         </tr>
                       ))

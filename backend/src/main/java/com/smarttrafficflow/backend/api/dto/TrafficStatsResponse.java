@@ -4,6 +4,6 @@ import java.util.List;
 
 public record TrafficStatsResponse(
         List<String> labels,
-        List<Integer> values
+        List<Long> values
 ) {
 }

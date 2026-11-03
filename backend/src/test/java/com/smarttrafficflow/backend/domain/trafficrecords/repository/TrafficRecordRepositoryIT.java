@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import(PostgisTestcontainersConfiguration.class)
 @DisplayName("TrafficRecordRepository integration tests")
-class TrafficRecordRepositoryTests {
+class TrafficRecordRepositoryIT {
 
     private static final String CENTRAL_GEOMETRY =
             "{\"type\":\"LineString\",\"coordinates\":[[-46.6333,-23.5505],[-46.634,-23.551]]}";
@@ -72,14 +72,36 @@ class TrafficRecordRepositoryTests {
     }
 
     @Test
-    @DisplayName("loads every record with its street")
-    void loadsAllRecordsWithStreet() {
-        List<TrafficRecord> records = trafficRecordRepository.findAllWithStreet();
+    @DisplayName("loads the most recent records with their streets, newest first, up to the page size")
+    void loadsTheMostRecentRecordsWithStreet() {
+        List<TrafficRecord> all = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 10));
+        List<TrafficRecord> latestTwo = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2));
 
-        assertThat(records).extracting(TrafficRecord::getId)
-                .containsExactlyInAnyOrder(morningRecordId, highwayRecordId, floresRecordId);
-        assertThat(records).extracting(record -> record.getStreet().getName())
-                .containsExactlyInAnyOrder("Avenida Central", "Avenida Central", "Rua das Flores");
+        assertThat(all).extracting(TrafficRecord::getId)
+                .containsExactly(floresRecordId, highwayRecordId, morningRecordId);
+        assertThat(all).extracting(record -> record.getStreet().getName())
+                .containsExactly("Rua das Flores", "Avenida Central", "Avenida Central");
+        assertThat(latestTwo).extracting(TrafficRecord::getId).containsExactly(floresRecordId, highwayRecordId);
+    }
+
+    @Test
+    @DisplayName("breaks timestamp ties by id, descending, so the cut is stable")
+    void breaksTimestampTiesById() {
+        // Fixed ids on purpose. PostgreSQL orders uuid by its bytes without sign, while UUID.compareTo in Java compares
+        // as signed numbers, so two ids whose first byte is on opposite sides of 0x80 sort in opposite ways. These are
+        // such a pair: for the database, c871... is greater than 3231....
+        UUID greater = UUID.fromString("c871e1c7-1c82-4e27-8aea-8f86b98e5027");
+        UUID smaller = UUID.fromString("32314a64-f647-4cfd-916a-00fab9c7d538");
+        for (UUID id : new UUID[]{smaller, greater}) {
+            jdbcTemplate.update(
+                    "INSERT INTO traffic_records (id, timestamp, road_type, vehicle_volume, street_id) VALUES (?, ?, ?, ?, ?)",
+                    id, OffsetDateTime.parse("2025-01-01T00:00:00Z"), "LOCAL", 1, centralId);
+        }
+        entityManager.clear();
+
+        List<TrafficRecord> latest = trafficRecordRepository.findLatestWithStreet(PageRequest.of(0, 2));
+
+        assertThat(latest).extracting(TrafficRecord::getId).containsExactly(greater, smaller);
     }
 
     @Test
@@ -113,15 +135,32 @@ class TrafficRecordRepositoryTests {
     }
 
     @Test
+    @DisplayName("lists only the ids of the filtered records, newest first, with the total of matches")
+    void listsTheFilteredIds() {
+        Page<UUID> all = trafficRecordRepository.findIdsByFilter(null, PageRequest.of(0, 2));
+        Page<UUID> highways = trafficRecordRepository.findIdsByFilter("%highway%", PageRequest.of(0, 10));
+        Page<UUID> avenue = trafficRecordRepository.findIdsByFilter("%avenida%", PageRequest.of(0, 10));
+        Page<UUID> nothing = trafficRecordRepository.findIdsByFilter("%inexistente%", PageRequest.of(0, 10));
+
+        assertThat(all.getContent()).containsExactly(floresRecordId, highwayRecordId);
+        assertThat(all.getTotalElements()).isEqualTo(3);
+        assertThat(highways.getContent()).containsExactly(highwayRecordId);
+        assertThat(avenue.getContent()).containsExactly(highwayRecordId, morningRecordId);
+        assertThat(avenue.getTotalElements()).isEqualTo(2);
+        assertThat(nothing.getContent()).isEmpty();
+        assertThat(nothing.getTotalElements()).isZero();
+    }
+
+    @Test
     @DisplayName("loads only the requested records with their streets")
     void loadsRequestedRecordsWithStreet() {
         List<TrafficRecord> records = trafficRecordRepository.findAllByIdInWithStreet(
                 List.of(morningRecordId, floresRecordId));
 
         assertThat(records).extracting(TrafficRecord::getId)
-                .containsExactlyInAnyOrder(morningRecordId, floresRecordId);
+                .containsExactly(floresRecordId, morningRecordId);
         assertThat(records).extracting(record -> record.getStreet().getName())
-                .containsExactlyInAnyOrder("Avenida Central", "Rua das Flores");
+                .containsExactly("Rua das Flores", "Avenida Central");
     }
 
     @Test
@@ -177,6 +216,20 @@ class TrafficRecordRepositoryTests {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode geometry = objectMapper.readTree(feature.getGeometry());
         assertThat(geometry).isEqualTo(objectMapper.readTree(CENTRAL_GEOMETRY));
+    }
+
+    @Test
+    @DisplayName("projects the map features of the most recent records, newest first, up to the limit")
+    void projectsTheLatestMapFeatures() {
+        List<TrafficRecordRepository.TrafficMapFeatureView> all = trafficRecordRepository.findLatestMapFeatures(10);
+        List<TrafficRecordRepository.TrafficMapFeatureView> latestTwo = trafficRecordRepository.findLatestMapFeatures(2);
+
+        assertThat(all).extracting(TrafficRecordRepository.TrafficMapFeatureView::getRecordId)
+                .containsExactly(floresRecordId, highwayRecordId, morningRecordId);
+        assertThat(latestTwo).extracting(TrafficRecordRepository.TrafficMapFeatureView::getRecordId)
+                .containsExactly(floresRecordId, highwayRecordId);
+        assertThat(all.get(0).getStreetName()).isEqualTo("Rua das Flores");
+        assertThat(all.get(0).getGeometry()).contains("LineString");
     }
 
     private UUID insertStreet(long osmWayId, String name, String geometryJson) {

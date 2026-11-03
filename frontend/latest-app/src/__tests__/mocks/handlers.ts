@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import type {
   MapFeatureCollection,
   PagedResponse,
+  RecordIdsResponse,
   StreetSearchResponse,
   TrafficInsightResponse,
   TrafficRecord,
@@ -43,8 +44,8 @@ export const mockStats: TrafficStatsResponse = {
 
 export const mockInsights: TrafficInsightResponse = {
   insights: [
-    "Horario com maior volume agregado: 17h.",
-    "Tipo de via com maior volume agregado: HIGHWAY."
+    "Horário de pico: 17h.",
+    "Tipo de via com maior volume: Via expressa."
   ]
 };
 
@@ -91,18 +92,22 @@ export const mockSummary: TrafficRecordSummary = {
   latestTimestamp: "2024-06-17T17:30:00Z"
 };
 
-function buildPagedRecords(request: Request): PagedResponse<TrafficRecord> {
-  const url = new URL(request.url);
-  const page = Number(url.searchParams.get("page") ?? "0");
-  const size = Number(url.searchParams.get("size") ?? "20");
-  const query = url.searchParams.get("query")?.toLowerCase().trim() ?? "";
-  const filteredItems = query
+function filterRecords(request: Request): TrafficRecord[] {
+  const query = new URL(request.url).searchParams.get("query")?.toLowerCase().trim() ?? "";
+  return query
     ? mockRecords.filter((record) =>
         [record.roadType, record.streetName, record.weather, record.eventType]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(query))
       )
     : mockRecords;
+}
+
+function buildPagedRecords(request: Request): PagedResponse<TrafficRecord> {
+  const url = new URL(request.url);
+  const page = Number(url.searchParams.get("page") ?? "0");
+  const size = Number(url.searchParams.get("size") ?? "20");
+  const filteredItems = filterRecords(request);
   const start = page * size;
   const items = filteredItems.slice(start, start + size);
 
@@ -117,6 +122,15 @@ function buildPagedRecords(request: Request): PagedResponse<TrafficRecord> {
 
 export const handlers = [
   http.get(`${BASE}/traffic-records`, ({ request }) => HttpResponse.json(buildPagedRecords(request))),
+  http.get(`${BASE}/traffic-records/ids`, ({ request }) => {
+    const matches = filterRecords(request);
+    return HttpResponse.json({
+      recordIds: matches.map((record) => record.id),
+      total: matches.length,
+      limit: 10000,
+      truncated: false
+    } satisfies RecordIdsResponse);
+  }),
   http.get(`${BASE}/traffic-records/summary`, () => HttpResponse.json(mockSummary)),
   http.post(`${BASE}/traffic-records/summary/filter`, async ({ request }) => {
     const body = (await request.json()) as { recordIds?: string[] };
@@ -183,12 +197,24 @@ export const handlers = [
     }
     return HttpResponse.json(mockInsights);
   }),
+  http.get(`${BASE}/traffic-map`, () =>
+    HttpResponse.json({
+      ...mockMapData,
+      meta: { scope: "latest", limit: 250, count: mockMapData.features.length }
+    } satisfies MapFeatureCollection)
+  ),
   http.post(`${BASE}/traffic-map/filter`, async ({ request }) => {
     const body = (await request.json()) as { recordIds?: string[] };
     if (!body.recordIds?.length) {
-      return HttpResponse.json({ type: "FeatureCollection", features: [] });
+      return HttpResponse.json({
+        ...mockMapData,
+        meta: { scope: "latest", limit: 250, count: mockMapData.features.length }
+      } satisfies MapFeatureCollection);
     }
-    return HttpResponse.json(mockMapData);
+    return HttpResponse.json({
+      ...mockMapData,
+      meta: { scope: "selection", limit: null, count: mockMapData.features.length }
+    } satisfies MapFeatureCollection);
   }),
   http.get(`${BASE}/streets/search`, ({ request }) => {
     const query = new URL(request.url).searchParams.get("q")?.toLowerCase() ?? "";
@@ -214,22 +240,45 @@ export const handlers = [
       }))
     );
   }),
-  http.get(`${BASE}/exports`, ({ request }) => {
+  http.get(`${BASE}/exports`, ({ request }) =>
+    exportResponse(new URL(request.url).searchParams.get("format"), mockRecords)
+  ),
+  http.post(`${BASE}/exports/filter`, async ({ request }) => {
     const format = new URL(request.url).searchParams.get("format");
-    if (format === "csv") {
-      return new HttpResponse("id,timestamp\nrec-1,2024-06-17T08:00:00Z\n", {
-        headers: {
-          "Content-Type": "text/csv"
-        }
-      });
-    }
-    if (format === "json") {
-      return new HttpResponse(JSON.stringify([{ id: "rec-1" }]), {
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
-    }
-    return HttpResponse.json({ message: "Formato inválido" }, { status: 400 });
+    const body = (await request.json()) as { recordIds?: string[] };
+    const selected = body.recordIds?.length
+      ? mockRecords.filter((record) => body.recordIds?.includes(record.id))
+      : mockRecords;
+    return exportResponse(format, selected);
   })
 ];
+
+const csvHeader = "id,timestamp,roadType,vehicleVolume,eventType,weather,streetId,streetOsmWayId,streetName";
+
+function csvRow(record: TrafficRecord) {
+  return [
+    record.id,
+    record.timestamp,
+    record.roadType,
+    record.vehicleVolume,
+    record.eventType ?? "",
+    record.weather ?? "",
+    record.streetId ?? "",
+    record.streetOsmWayId ?? "",
+    record.streetName ?? ""
+  ].join(",");
+}
+
+/** Same as the backend: the real records, with the totals in headers. The CSV starts with the UTF-8 BOM. */
+export function exportResponse(format: string | null, records: TrafficRecord[]) {
+  const totals = { "X-Total-Records": String(records.length), "X-Exported-Records": String(records.length) };
+  if (format === "csv") {
+    return new HttpResponse(`${String.fromCharCode(0xfeff)}${csvHeader}\n${records.map((record) => `${csvRow(record)}\n`).join("")}`, {
+      headers: { ...totals, "Content-Type": "text/csv;charset=UTF-8" }
+    });
+  }
+  if (format === "json") {
+    return HttpResponse.json(records, { headers: totals });
+  }
+  return HttpResponse.json({ message: "Formato inválido" }, { status: 400 });
+}

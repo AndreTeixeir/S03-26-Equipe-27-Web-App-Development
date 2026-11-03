@@ -9,7 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("test")
 @Import(PostgisTestcontainersConfiguration.class)
-class SmartTrafficFlowApplicationTests {
+class SmartTrafficFlowApplicationIT {
 
     @Test
     void contextLoads() {

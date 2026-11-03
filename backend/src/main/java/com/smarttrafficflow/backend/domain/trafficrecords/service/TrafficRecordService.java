@@ -2,6 +2,8 @@ package com.smarttrafficflow.backend.domain.trafficrecords.service;
 
 import com.smarttrafficflow.backend.api.dto.CreateTrafficRecordRequest;
 import com.smarttrafficflow.backend.api.dto.PagedTrafficRecordResponse;
+import com.smarttrafficflow.backend.api.dto.RecordIdsResponse;
+import com.smarttrafficflow.backend.config.RecordLimits;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordSummaryResponse;
 import com.smarttrafficflow.backend.domain.trafficrecords.entity.TrafficRecord;
@@ -26,10 +28,12 @@ public class TrafficRecordService {
 
     private final TrafficRecordRepository repository;
     private final StreetService streetService;
+    private final RecordLimits limits;
 
-    public TrafficRecordService(TrafficRecordRepository repository, StreetService streetService) {
+    public TrafficRecordService(TrafficRecordRepository repository, StreetService streetService, RecordLimits limits) {
         this.repository = repository;
         this.streetService = streetService;
+        this.limits = limits;
     }
 
     public TrafficRecordResponse create(CreateTrafficRecordRequest request) {
@@ -49,10 +53,29 @@ public class TrafficRecordService {
         return toResponse(saved);
     }
 
-    public List<TrafficRecordResponse> findAll() {
-        List<TrafficRecordResponse> records = repository.findAllWithStreet().stream().map(this::toResponse).toList();
-        log.debug("TrafficRecord findAll returned {} records", records.size());
+    /** The {@code limit} most recent records ({@code timestamp} and {@code id} descending). */
+    public List<TrafficRecordResponse> findLatest(int limit) {
+        List<TrafficRecordResponse> records = repository.findLatestWithStreet(PageRequest.of(0, limit)).stream()
+                .map(this::toResponse)
+                .toList();
+        log.debug("TrafficRecord findLatest({}) returned {} records", limit, records.size());
         return records;
+    }
+
+    /** The requested records that exist, most recent first. */
+    public List<TrafficRecordResponse> findByIds(List<UUID> recordIds) {
+        if (recordIds == null || recordIds.isEmpty()) {
+            return List.of();
+        }
+        List<TrafficRecordResponse> records = repository.findAllByIdInWithStreet(recordIds).stream()
+                .map(this::toResponse)
+                .toList();
+        log.debug("TrafficRecord findByIds returned {} records from {} ids", records.size(), recordIds.size());
+        return records;
+    }
+
+    public long countAll() {
+        return repository.count();
     }
 
     public PagedTrafficRecordResponse findPage(int page, int size, String query) {
@@ -78,6 +101,19 @@ public class TrafficRecordService {
         );
     }
 
+    /**
+     * Ids of every record that matches the table filter ("select all filtered"), most recent first, up to the export
+     * limit. {@code truncated} tells the caller there were more matches than ids.
+     */
+    public RecordIdsResponse findFilteredIds(String query) {
+        int limit = limits.exportMaxRecords();
+        Page<UUID> ids = repository.findIdsByFilter(buildQueryPattern(query), PageRequest.of(0, limit));
+        boolean truncated = ids.getTotalElements() > ids.getNumberOfElements();
+        log.debug("TrafficRecord findFilteredIds returned {} ids of {} matches (limit {})",
+                ids.getNumberOfElements(), ids.getTotalElements(), limit);
+        return new RecordIdsResponse(ids.getContent(), ids.getTotalElements(), limit, truncated);
+    }
+
     public TrafficRecordSummaryResponse findSummary(List<UUID> recordIds) {
         TrafficRecordRepository.TrafficRecordSummaryView summaryView =
                 recordIds == null || recordIds.isEmpty()
@@ -95,27 +131,15 @@ public class TrafficRecordService {
         );
     }
 
-    public List<TrafficRecord> findAllEntities() {
-        List<TrafficRecord> records = repository.findAllWithStreet();
-        log.debug("TrafficRecord findAllEntities returned {} records", records.size());
-        return records;
-    }
-
-    public List<TrafficRecord> findEntitiesByIds(List<UUID> recordIds) {
-        if (recordIds == null || recordIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<TrafficRecord> records = repository.findAllByIdInWithStreet(recordIds);
-        log.debug("TrafficRecord findEntitiesByIds returned {} records from {} ids", records.size(), recordIds.size());
-        return records;
-    }
-
     public List<TrafficRecordRepository.TrafficMapFeatureView> findMapFeaturesByRecordIds(List<UUID> recordIds) {
         if (recordIds == null || recordIds.isEmpty()) {
             return List.of();
         }
         return repository.findMapFeaturesByRecordIds(recordIds);
+    }
+
+    public List<TrafficRecordRepository.TrafficMapFeatureView> findLatestMapFeatures(int limit) {
+        return repository.findLatestMapFeatures(limit);
     }
 
     private String buildQueryPattern(String query) {

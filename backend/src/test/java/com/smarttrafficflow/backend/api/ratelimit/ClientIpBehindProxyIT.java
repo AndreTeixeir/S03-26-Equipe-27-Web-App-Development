@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
  * Every request comes from the same TCP peer (the test client), like requests relayed by the web container (Caddy).
  */
 @DisplayName("Client IP for the write rate limit")
-class ClientIpBehindProxyITTests {
+class ClientIpBehindProxyIT {
 
     private static final String SIMULATIONS_URL = "/api/simulations/generate";
     private static final String BODY = "{\"recordsToGenerate\":1,\"scenarioName\":\"Teste\"}";

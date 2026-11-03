@@ -6,6 +6,7 @@ import {
   createTrafficRecord,
   generateSimulation,
   getExport,
+  getFilteredRecordIds,
   getTrafficInsights,
   getTrafficMap,
   getTrafficRecordSummary,
@@ -165,13 +166,64 @@ describe("api client", () => {
     expect(summary.totalVehicleVolume).toBe(120);
   });
 
-  it("returns an empty feature collection when no record ids are passed", async () => {
-    await expect(getTrafficMap([])).resolves.toEqual({ type: "FeatureCollection", features: [] });
+  it("loads the most recent records for the map using GET when no record ids are passed", async () => {
+    const mapData = await getTrafficMap([]);
+
+    expect(mapData.meta).toEqual({ scope: "latest", limit: 250, count: 1 });
+    expect(mapData.features[0]?.properties.streetName).toBe("Avenida Central");
+  });
+
+  it("asks the backend for the latest records instead of answering an empty map locally", async () => {
+    let requested = "";
+    server.use(
+      http.get(`${BASE}/traffic-map`, ({ request }) => {
+        requested = `${request.method} ${new URL(request.url).pathname}`;
+        return HttpResponse.json({ type: "FeatureCollection", features: [] });
+      })
+    );
+
+    await getTrafficMap([]);
+
+    expect(requested).toBe("GET /api/traffic-map");
   });
 
   it("loads filtered map data using POST", async () => {
     const mapData = await getTrafficMap(["rec-1"]);
     expect(mapData.features[0]?.properties.streetName).toBe("Avenida Central");
+    expect(mapData.meta?.scope).toBe("selection");
+  });
+
+  it("collects the ids of the filtered records in one request", async () => {
+    const all = await getFilteredRecordIds("");
+    const highways = await getFilteredRecordIds("  Rodovia ");
+
+    expect(all.recordIds).toEqual(["rec-1", "rec-2"]);
+    expect(all.truncated).toBe(false);
+    expect(highways.recordIds).toEqual(["rec-2"]);
+    expect(highways.total).toBe(1);
+  });
+
+  it("sends the filter text in the query string and leaves it out when empty", async () => {
+    const searches: string[] = [];
+    server.use(
+      http.get(`${BASE}/traffic-records/ids`, ({ request }) => {
+        searches.push(new URL(request.url).search);
+        return HttpResponse.json({ recordIds: [], total: 0, limit: 10000, truncated: false });
+      })
+    );
+
+    await getFilteredRecordIds("   ");
+    await getFilteredRecordIds("norte & sul");
+
+    expect(searches).toEqual(["", "?query=norte+%26+sul"]);
+  });
+
+  it("surfaces errors from the filtered ids request", async () => {
+    server.use(
+      http.get(`${BASE}/traffic-records/ids`, () => HttpResponse.json({ message: "Parâmetro inválido" }, { status: 400 }))
+    );
+
+    await expect(getFilteredRecordIds("x")).rejects.toMatchObject({ status: 400, message: "Parâmetro inválido" });
   });
 
   it("searches streets", async () => {
@@ -191,9 +243,125 @@ describe("api client", () => {
   });
 
   it("downloads csv export as blob", async () => {
-    const blob = await getExport("csv");
-    expect(blob.type).toBe("text/csv");
-    await expect(readBlobText(blob)).resolves.toBe("id,timestamp\nrec-1,2024-06-17T08:00:00Z\n");
+    const { blob } = await getExport("csv");
+    expect(blob.type).toContain("text/csv");
+    const text = await readBlobText(blob);
+    expect(text).toContain("id,timestamp,roadType,vehicleVolume,eventType,weather,streetId,streetOsmWayId,streetName\n");
+    expect(text).toContain("rec-1,2024-06-17T08:00:00Z,ARTERIAL,120,RUSH_HOUR,SUNNY,street-1,101,Avenida Central\n");
+  });
+
+  it("exports the real records as json, with the same fields as the csv", async () => {
+    const { blob } = await getExport("json");
+
+    const records = JSON.parse(await readBlobText(blob)) as Array<Record<string, unknown>>;
+    expect(records).toHaveLength(2);
+    expect(Object.keys(records[0] ?? {})).toEqual([
+      "id",
+      "timestamp",
+      "roadType",
+      "vehicleVolume",
+      "eventType",
+      "weather",
+      "streetId",
+      "streetOsmWayId",
+      "streetName"
+    ]);
+    expect(records[1]?.streetName).toBe("Rodovia Norte");
+  });
+
+  it("reads how many records exist and how many were exported from the response headers", async () => {
+    server.use(
+      http.get(`${BASE}/exports`, () =>
+        HttpResponse.json([], { headers: { "X-Total-Records": "12345", "X-Exported-Records": "10000" } })
+      )
+    );
+
+    const result = await getExport("json");
+
+    expect(result.total).toBe(12345);
+    expect(result.exported).toBe(10000);
+  });
+
+  it("reports unknown totals as null when the response has no headers", async () => {
+    server.use(http.get(`${BASE}/exports`, () => new HttpResponse("id\n", { headers: { "Content-Type": "text/csv" } })));
+
+    const result = await getExport("csv");
+
+    expect(result.total).toBeNull();
+    expect(result.exported).toBeNull();
+  });
+
+  it("sends the selected ids in the body of a POST, never in the URL", async () => {
+    const seen: { method: string; url: string; body: unknown }[] = [];
+    server.use(
+      http.post(`${BASE}/exports/filter`, async ({ request }) => {
+        seen.push({ method: request.method, url: request.url, body: await request.json() });
+        return HttpResponse.json([], { headers: { "X-Total-Records": "2", "X-Exported-Records": "2" } });
+      })
+    );
+
+    const result = await getExport("json", ["rec-1", "rec-2"]);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.method).toBe("POST");
+    expect(seen[0]?.url).toBe(`${BASE}/exports/filter?format=json`);
+    expect(seen[0]?.body).toEqual({ recordIds: ["rec-1", "rec-2"] });
+    expect(result.exported).toBe(2);
+  });
+
+  it("exports only the selected records", async () => {
+    const { blob } = await getExport("json", ["rec-2"]);
+
+    const records = JSON.parse(await readBlobText(blob)) as Array<{ id: string }>;
+    expect(records.map((record) => record.id)).toEqual(["rec-2"]);
+  });
+
+  it("uses the GET route when the selection is empty", async () => {
+    let method = "";
+    server.use(
+      http.get(`${BASE}/exports`, ({ request }) => {
+        method = request.method;
+        return HttpResponse.json([]);
+      })
+    );
+
+    await getExport("json", []);
+
+    expect(method).toBe("GET");
+  });
+
+  it("surfaces errors of the selection export", async () => {
+    server.use(
+      http.post(`${BASE}/exports/filter`, () =>
+        HttpResponse.json({ message: "A seleção tem 4 registros e o limite por exportação é 3." }, { status: 400 })
+      )
+    );
+
+    await expect(getExport("csv", ["rec-1"])).rejects.toMatchObject({
+      status: 400,
+      message: "A seleção tem 4 registros e o limite por exportação é 3."
+    });
+  });
+
+  it("explains failures in Portuguese when the backend sends no message", async () => {
+    server.use(
+      http.get(`${BASE}/traffic-records`, () => new HttpResponse(null, { status: 502 })),
+      http.get(`${BASE}/exports`, () => new HttpResponse(null, { status: 500 })),
+      http.post(`${BASE}/exports/filter`, () => new HttpResponse(null, { status: 503 }))
+    );
+
+    await expect(getTrafficRecords()).rejects.toMatchObject({
+      status: 502,
+      message: "A requisição falhou (HTTP 502)."
+    });
+    await expect(getExport("csv")).rejects.toMatchObject({
+      status: 500,
+      message: "A exportação falhou (HTTP 500)."
+    });
+    await expect(getExport("csv", ["rec-1"])).rejects.toMatchObject({
+      status: 503,
+      message: "A exportação falhou (HTTP 503)."
+    });
   });
 
   it("surfaces export errors", async () => {

@@ -29,6 +29,14 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  # Time zone in which hours and weekdays of the records are observed (statistics and insights).
+  timezone: ${APP_TIMEZONE:America/Sao_Paulo}
+  export:
+    # Most recent records in one export (also the ceiling of "select all filtered" and of an export selection).
+    max-records: ${APP_EXPORT_MAX_RECORDS:10000}
+  map:
+    # Most recent records shown on the map when nothing is selected.
+    max-records: ${APP_MAP_MAX_RECORDS:250}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173}
   rate-limit:
