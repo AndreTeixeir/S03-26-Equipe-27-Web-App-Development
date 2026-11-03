@@ -22,28 +22,24 @@ public class ExportService {
     public String exportCsv() {
         List<TrafficRecordResponse> records = trafficRecordService.findAll();
         log.info("Exporting {} records to CSV", records.size());
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(CsvFormat.BYTE_ORDER_MARK);
         sb.append("id,timestamp,roadType,vehicleVolume,eventType,weather,streetId,streetOsmWayId,streetName\n");
 
         for (TrafficRecordResponse record : records) {
             sb.append(record.id()).append(',')
                     .append(record.timestamp()).append(',')
-                    .append(record.roadType()).append(',')
+                    .append(CsvFormat.text(record.roadType())).append(',')
                     .append(record.vehicleVolume()).append(',')
-                    .append(safe(record.eventType())).append(',')
-                    .append(safe(record.weather())).append(',')
+                    .append(CsvFormat.text(record.eventType())).append(',')
+                    .append(CsvFormat.text(record.weather())).append(',')
                     .append(record.streetId()).append(',')
                     .append(record.streetOsmWayId()).append(',')
-                    .append(safe(record.streetName()))
+                    .append(CsvFormat.text(record.streetName()))
                     .append('\n');
         }
 
         String csv = sb.toString();
         log.debug("CSV export built with {} characters", csv.length());
         return csv;
-    }
-
-    private String safe(String value) {
-        return value == null ? "" : value;
     }
 }

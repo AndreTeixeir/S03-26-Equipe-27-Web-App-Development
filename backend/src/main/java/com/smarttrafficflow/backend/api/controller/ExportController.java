@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -34,7 +35,7 @@ public class ExportController {
             log.info("GET /api/exports - csv generated with {} characters", csv.length());
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=traffic-data.csv")
-                    .contentType(MediaType.TEXT_PLAIN)
+                    .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
                     .body(csv);
         }
 

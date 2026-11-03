@@ -43,7 +43,8 @@ class ExportControllerTests {
                         .param("format", "csv"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=traffic-data.csv"))
-                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("streetOsmWayId,streetName")));
     }
 
