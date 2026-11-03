@@ -1,7 +1,8 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Polyline, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
+import { peakHourLabel, roadTypeLabel, trafficLevelLabel, weatherLabel, weekdayLabel } from "./lib/labels";
 import type { ExportResult } from "./lib/api";
 import {
   API_BASE_URL,
@@ -49,6 +50,8 @@ type ChartCardProps = {
   tone: "signal" | "ember" | "ink";
   stats: TrafficStatsResponse;
   chart: "bar" | "area";
+  /** How each label of the API (a code, such as MONDAY) is shown on the axis. */
+  formatChartLabel?: (label: string) => string;
 };
 
 type ViewMode = "home" | "workspace";
@@ -161,26 +164,11 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(href), 120);
 }
 
-function buildChartData(stats: TrafficStatsResponse) {
+function buildChartData(stats: TrafficStatsResponse, formatChartLabel: (label: string) => string) {
   return stats.labels.map((label, index) => ({
-    label: formatLabel(label),
+    label: formatChartLabel(label),
     value: stats.values[index] ?? 0
   }));
-}
-
-function getPeakLabel(stats: TrafficStatsResponse) {
-  if (stats.labels.length === 0) {
-    return "Sem dados";
-  }
-
-  let peakIndex = 0;
-  stats.values.forEach((value, index) => {
-    if (value > (stats.values[peakIndex] ?? 0)) {
-      peakIndex = index;
-    }
-  });
-
-  return formatLabel(stats.labels[peakIndex] ?? "Desconhecido");
 }
 
 function getLatestTimestamp(timestamp: string | null) {
@@ -198,8 +186,8 @@ function areSameSelection(left: string[], right: string[]) {
   return right.every((id) => leftSet.has(id));
 }
 
-function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
-  const data = buildChartData(stats);
+function ChartCard({ eyebrow, title, tone, stats, chart, formatChartLabel = formatLabel }: ChartCardProps) {
+  const data = buildChartData(stats, formatChartLabel);
   const areaTone = tone === "signal" ? "#f25c3a" : tone === "ember" ? "#ffb24a" : "#123c63";
 
   return (
@@ -225,7 +213,7 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
                 cursor={{ fill: "rgba(242, 92, 58, 0.08)" }}
                 contentStyle={{ borderRadius: 18, border: "1px solid rgba(18, 60, 99, 0.12)" }}
               />
-              <Bar dataKey="value" radius={[12, 12, 0, 0]}>
+              <Bar dataKey="value" name="Veículos" radius={[12, 12, 0, 0]}>
                 {data.map((entry, index) => (
                   <Cell key={`${entry.label}-${index}`} fill={chartPalette[index % chartPalette.length]} />
                 ))}
@@ -255,6 +243,7 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
               <Area
                 type="monotone"
                 dataKey="value"
+                name="Veículos"
                 stroke={areaTone}
                 strokeWidth={3}
                 fill={`url(#gradient-${tone})`}
@@ -330,7 +319,8 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
       ) : (
         <div className="map-shell">
           {legend ? <p className="map-legend">{legend}</p> : null}
-          <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={true}>
+          <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={false}>
+            <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -347,7 +337,7 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
                   <br />
                   Volume: {point.properties.vehicleVolume}
                   <br />
-                  Nível: {point.properties.trafficLevel}
+                  Nível: {trafficLevelLabel(point.properties.trafficLevel)}
                 </Popup>
               </Polyline>
             ))}
@@ -687,13 +677,13 @@ export default function App() {
     },
     {
       label: "Janela de pico",
-      value: getPeakLabel(dashboard.byHour),
+      value: peakHourLabel(dashboard.byHour),
       meta: "Maior concentração nos dados atuais"
     },
     {
-      label: "Ruas mapeadas",
+      label: "Ruas com registros",
       value: String(dashboard.summary.uniqueStreetCount),
-      meta: "Corredores monitorados no contexto atual"
+      meta: "Ruas distintas nos registros do contexto atual"
     },
     {
       label: "Carga média",
@@ -823,8 +813,22 @@ export default function App() {
 
             <div className="charts-grid reveal reveal-3">
               <ChartCard eyebrow="Cadência de volume" title="Curva horária de pressão" tone="signal" chart="area" stats={dashboard.byHour} />
-              <ChartCard eyebrow="Padrão semanal" title="Distribuição por dia útil" tone="ink" chart="bar" stats={dashboard.byWeekday} />
-              <ChartCard eyebrow="Mistura viária" title="Divisão por tipo de via" tone="ember" chart="bar" stats={dashboard.byRoadType} />
+              <ChartCard
+                eyebrow="Padrão semanal"
+                title="Distribuição por dia da semana"
+                tone="ink"
+                chart="bar"
+                stats={dashboard.byWeekday}
+                formatChartLabel={weekdayLabel}
+              />
+              <ChartCard
+                eyebrow="Mistura viária"
+                title="Divisão por tipo de via"
+                tone="ember"
+                chart="bar"
+                stats={dashboard.byRoadType}
+                formatChartLabel={roadTypeLabel}
+              />
             </div>
 
             <TrafficMapCard
@@ -899,7 +903,7 @@ export default function App() {
                     >
                       {roadTypeOptions.map((option) => (
                         <option key={option} value={option}>
-                          {option}
+                          {roadTypeLabel(option)}
                         </option>
                       ))}
                     </select>
@@ -1136,10 +1140,10 @@ export default function App() {
                             />
                           </td>
                           <td>{formatDateTime(record.timestamp)}</td>
-                          <td>{formatLabel(record.roadType)}</td>
+                          <td>{roadTypeLabel(record.roadType)}</td>
                           <td>{record.vehicleVolume}</td>
                           <td>{record.streetName ?? "Não atribuída"}</td>
-                          <td>{record.weather ?? "n/d"}</td>
+                          <td>{record.weather ? weatherLabel(record.weather) : "n/d"}</td>
                           <td>{record.eventType ?? "n/d"}</td>
                         </tr>
                       ))

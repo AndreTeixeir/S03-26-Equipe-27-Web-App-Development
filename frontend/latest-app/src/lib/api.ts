@@ -37,7 +37,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    const message = parseApiErrorMessage(text) || `Request failed with status ${response.status}`;
+    const message = parseApiErrorMessage(text) || `A requisição falhou (HTTP ${response.status}).`;
     throw new ApiError(message, response.status);
   }
 
@@ -205,7 +205,7 @@ export async function getExport(
 
   if (!response.ok) {
     const text = await response.text();
-    const message = parseApiErrorMessage(text) || `Export failed with status ${response.status}`;
+    const message = parseApiErrorMessage(text) || `A exportação falhou (HTTP ${response.status}).`;
     throw new ApiError(message, response.status);
   }
 

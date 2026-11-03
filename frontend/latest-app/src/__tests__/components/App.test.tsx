@@ -12,7 +12,14 @@ import type { PagedResponse, RecordIdsResponse, TrafficRecord, TrafficRecordSumm
 const mapProbe = vi.hoisted(() => ({ fitBounds: vi.fn() }));
 
 vi.mock("react-leaflet", () => ({
-  MapContainer: ({ children }: { children: ReactNode }) => <div data-testid="map-container">{children}</div>,
+  MapContainer: ({ children, zoomControl }: { children: ReactNode; zoomControl?: boolean }) => (
+    <div data-testid="map-container" data-zoom-control={String(zoomControl)}>
+      {children}
+    </div>
+  ),
+  ZoomControl: ({ zoomInTitle, zoomOutTitle }: { zoomInTitle?: string; zoomOutTitle?: string }) => (
+    <div data-testid="zoom-control" data-zoom-in={zoomInTitle} data-zoom-out={zoomOutTitle} />
+  ),
   TileLayer: () => <div data-testid="tile-layer" />,
   Polyline: ({ children }: { children: ReactNode }) => <div data-testid="map-polyline">{children}</div>,
   Popup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -21,13 +28,22 @@ vi.mock("react-leaflet", () => ({
 
 // The props each chart's y axis was rendered with, to check how its numbers are shown.
 const chartProbe = vi.hoisted(() => ({
-  yAxis: [] as Array<{ width?: number; tickFormatter?: (value: number) => string }>
+  yAxis: [] as Array<{ width?: number; tickFormatter?: (value: number) => string }>,
+  seriesNames: [] as Array<string | undefined>
 }));
 
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  AreaChart: ({ children }: { children?: ReactNode }) => <div data-testid="area-chart">{children}</div>,
-  BarChart: ({ children }: { children?: ReactNode }) => <div data-testid="bar-chart">{children}</div>,
+  AreaChart: ({ children, data }: { children?: ReactNode; data?: { label: string }[] }) => (
+    <div data-testid="area-chart" data-labels={JSON.stringify((data ?? []).map((point) => point.label))}>
+      {children}
+    </div>
+  ),
+  BarChart: ({ children, data }: { children?: ReactNode; data?: { label: string }[] }) => (
+    <div data-testid="bar-chart" data-labels={JSON.stringify((data ?? []).map((point) => point.label))}>
+      {children}
+    </div>
+  ),
   CartesianGrid: () => null,
   XAxis: () => null,
   YAxis: (props: { width?: number; tickFormatter?: (value: number) => string }) => {
@@ -35,9 +51,15 @@ vi.mock("recharts", () => ({
     return null;
   },
   Tooltip: () => null,
-  Bar: () => <div data-testid="bar-series" />,
+  Bar: (props: { name?: string }) => {
+    chartProbe.seriesNames.push(props.name);
+    return <div data-testid="bar-series" />;
+  },
   Cell: () => null,
-  Area: () => null
+  Area: (props: { name?: string }) => {
+    chartProbe.seriesNames.push(props.name);
+    return null;
+  }
 }));
 
 import App from "../../App";
@@ -821,6 +843,168 @@ describe("App", () => {
 
     expect(screen.getByText(/Página 1 de 1/i)).toBeInTheDocument();
     expect(screen.queryByText(/Página 2 de 2/i)).not.toBeInTheDocument();
+  });
+
+  describe("texts", () => {
+    const hours = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+    const weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+
+    function chartLabels(title: string): string[] {
+      const chart = within(screen.getByLabelText(title)).getByTestId(/-chart$/);
+      return JSON.parse(chart.getAttribute("data-labels") ?? "[]") as string[];
+    }
+
+    function serveStats(byGroup: Record<string, { labels: string[]; values: number[] }>) {
+      server.use(
+        http.get("http://localhost:8080/api/traffic-stats", ({ request }) => {
+          const groupBy = new URL(request.url).searchParams.get("groupBy") ?? "";
+          return HttpResponse.json(byGroup[groupBy] ?? { labels: [], values: [] });
+        })
+      );
+    }
+
+    it("abbreviates the weekdays and titles the weekly chart 'Distribuição por dia da semana'", async () => {
+      serveStats({
+        hour: { labels: hours, values: hours.map(() => 0) },
+        weekday: { labels: weekdays, values: [10, 20, 30, 40, 50, 60, 70] },
+        roadType: { labels: ["LOCAL"], values: [5] }
+      });
+
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      expect(screen.getByText("Distribuição por dia da semana")).toBeInTheDocument();
+      expect(screen.queryByText(/por dia útil/i)).not.toBeInTheDocument();
+      expect(chartLabels("Distribuição por dia da semana")).toEqual(["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]);
+    });
+
+    it("names the road types in Portuguese in the chart", async () => {
+      serveStats({
+        hour: { labels: hours, values: hours.map(() => 0) },
+        weekday: { labels: weekdays, values: [1, 1, 1, 1, 1, 1, 1] },
+        roadType: { labels: ["LOCAL", "ARTERIAL", "HIGHWAY", "UNKNOWN"], values: [4, 3, 2, 1] }
+      });
+
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      expect(chartLabels("Divisão por tipo de via")).toEqual([
+        "Via local",
+        "Via arterial",
+        "Via expressa",
+        "Não informado"
+      ]);
+    });
+
+    it("keeps the hours as numbers on the hourly chart", async () => {
+      serveStats({
+        hour: { labels: hours, values: hours.map((_, hour) => hour) },
+        weekday: { labels: weekdays, values: [1, 1, 1, 1, 1, 1, 1] },
+        roadType: { labels: ["LOCAL"], values: [1] }
+      });
+
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      expect(chartLabels("Curva horária de pressão")).toEqual(hours);
+    });
+
+    it("shows the peak window as 18h", async () => {
+      serveStats({
+        hour: { labels: hours, values: hours.map((_, hour) => (hour === 18 ? 900 : 10)) },
+        weekday: { labels: weekdays, values: [1, 1, 1, 1, 1, 1, 1] },
+        roadType: { labels: ["LOCAL"], values: [1] }
+      });
+
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      const card = screen.getByText("Janela de pico").closest("article") as HTMLElement;
+      expect(within(card).getByRole("heading", { level: 2 })).toHaveTextContent("18h");
+    });
+
+    it("shows 'Sem dados' as the peak window when every hour is zero", async () => {
+      serveStats({
+        hour: { labels: hours, values: hours.map(() => 0) },
+        weekday: { labels: weekdays, values: [0, 0, 0, 0, 0, 0, 0] },
+        roadType: { labels: [], values: [] }
+      });
+
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      const card = screen.getByText("Janela de pico").closest("article") as HTMLElement;
+      expect(within(card).getByRole("heading", { level: 2 })).toHaveTextContent("Sem dados");
+    });
+
+    it("calls the street card 'Ruas com registros', with its new description", async () => {
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      expect(screen.getByText("Ruas com registros")).toBeInTheDocument();
+      expect(screen.getByText("Ruas distintas nos registros do contexto atual")).toBeInTheDocument();
+      expect(screen.queryByText(/Ruas mapeadas/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Corredores monitorados/i)).not.toBeInTheDocument();
+    });
+
+    it("writes 'Horário' with an accent in the insights it receives", async () => {
+      server.use(
+        http.get("http://localhost:8080/api/traffic-insights", () =>
+          HttpResponse.json({ insights: ["Horário de pico: 17h.", "Tipo de via com maior volume: Via expressa."] })
+        )
+      );
+
+      render(<App />);
+
+      expect(await screen.findByText("Horário de pico: 17h.")).toBeInTheDocument();
+      expect(screen.getByText("Tipo de via com maior volume: Via expressa.")).toBeInTheDocument();
+    });
+
+    it("names the series 'Veículos', so the tooltip does not show 'value'", async () => {
+      chartProbe.seriesNames.length = 0;
+
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      await waitFor(() => expect(chartProbe.seriesNames.length).toBeGreaterThanOrEqual(3));
+      expect(new Set(chartProbe.seriesNames)).toEqual(new Set(["Veículos"]));
+    });
+
+    it("shows road types, weather and the traffic level in Portuguese in the table and in the map popup", async () => {
+      const user = userEvent.setup();
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+
+      const table = screen.getByRole("table");
+      expect(await within(table).findByText("Via arterial")).toBeInTheDocument();
+      expect(within(table).getByText("Via expressa")).toBeInTheDocument();
+      expect(within(table).getByText("Ensolarado")).toBeInTheDocument();
+      expect(within(table).getByText("Chuva")).toBeInTheDocument();
+      expect(within(table).queryByText("SUNNY")).not.toBeInTheDocument();
+      expect(screen.getByText(/Nível: Médio/)).toBeInTheDocument();
+      expect(screen.queryByText(/MEDIUM/)).not.toBeInTheDocument();
+    });
+
+    it("lists the road types of the form in Portuguese but still sends the codes", async () => {
+      const user = userEvent.setup();
+
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+
+      expect(screen.getByRole("option", { name: "Via local" })).toHaveValue("LOCAL");
+      expect(screen.getByRole("option", { name: "Via arterial" })).toHaveValue("ARTERIAL");
+      expect(screen.getByRole("option", { name: "Via expressa" })).toHaveValue("HIGHWAY");
+    });
+
+    it("translates the zoom buttons of the map", async () => {
+      render(<App />);
+      await screen.findByText(/^Conectado$/i);
+
+      expect(screen.getByTestId("map-container")).toHaveAttribute("data-zoom-control", "false");
+      expect(screen.getByTestId("zoom-control")).toHaveAttribute("data-zoom-in", "Aproximar");
+      expect(screen.getByTestId("zoom-control")).toHaveAttribute("data-zoom-out", "Afastar");
+    });
   });
 
   describe("map", () => {

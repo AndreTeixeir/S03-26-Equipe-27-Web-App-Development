@@ -44,8 +44,8 @@ export const mockStats: TrafficStatsResponse = {
 
 export const mockInsights: TrafficInsightResponse = {
   insights: [
-    "Horario com maior volume agregado: 17h.",
-    "Tipo de via com maior volume agregado: HIGHWAY."
+    "Horário de pico: 17h.",
+    "Tipo de via com maior volume: Via expressa."
   ]
 };
 

@@ -343,6 +343,27 @@ describe("api client", () => {
     });
   });
 
+  it("explains failures in Portuguese when the backend sends no message", async () => {
+    server.use(
+      http.get(`${BASE}/traffic-records`, () => new HttpResponse(null, { status: 502 })),
+      http.get(`${BASE}/exports`, () => new HttpResponse(null, { status: 500 })),
+      http.post(`${BASE}/exports/filter`, () => new HttpResponse(null, { status: 503 }))
+    );
+
+    await expect(getTrafficRecords()).rejects.toMatchObject({
+      status: 502,
+      message: "A requisição falhou (HTTP 502)."
+    });
+    await expect(getExport("csv")).rejects.toMatchObject({
+      status: 500,
+      message: "A exportação falhou (HTTP 500)."
+    });
+    await expect(getExport("csv", ["rec-1"])).rejects.toMatchObject({
+      status: 503,
+      message: "A exportação falhou (HTTP 503)."
+    });
+  });
+
   it("surfaces export errors", async () => {
     server.use(http.get(`${BASE}/exports`, () => HttpResponse.json({ message: "Formato inválido" }, { status: 400 })));
 
