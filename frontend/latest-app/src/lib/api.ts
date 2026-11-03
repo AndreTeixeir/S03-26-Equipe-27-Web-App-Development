@@ -12,6 +12,9 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
+/** Lets the caller cancel a request that is no longer needed (for example, when the page loads again). */
+export type RequestOptions = { signal?: AbortSignal };
+
 export class ApiError extends Error {
   status: number;
 
@@ -49,7 +52,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.text()) as T;
 }
 
-export function getTrafficRecords(params?: { page?: number; size?: number; query?: string }) {
+export function getTrafficRecords(
+  params?: { page?: number; size?: number; query?: string },
+  options?: RequestOptions
+) {
   const searchParams = new URLSearchParams();
   searchParams.set("page", String(params?.page ?? 0));
   searchParams.set("size", String(params?.size ?? 20));
@@ -58,7 +64,7 @@ export function getTrafficRecords(params?: { page?: number; size?: number; query
     searchParams.set("query", query);
   }
 
-  return request<PagedResponse<TrafficRecord>>(`/traffic-records?${searchParams.toString()}`);
+  return request<PagedResponse<TrafficRecord>>(`/traffic-records?${searchParams.toString()}`, { ...options });
 }
 
 export function createTrafficRecord(payload: CreateTrafficRecordRequest) {
@@ -68,15 +74,16 @@ export function createTrafficRecord(payload: CreateTrafficRecordRequest) {
   });
 }
 
-export function getTrafficRecordSummary(recordIds?: string[]) {
+export function getTrafficRecordSummary(recordIds?: string[], options?: RequestOptions) {
   if (recordIds && recordIds.length > 0) {
     return request<TrafficRecordSummary>("/traffic-records/summary/filter", {
       method: "POST",
-      body: JSON.stringify({ recordIds })
+      body: JSON.stringify({ recordIds }),
+      ...options
     });
   }
 
-  return request<TrafficRecordSummary>("/traffic-records/summary");
+  return request<TrafficRecordSummary>("/traffic-records/summary", { ...options });
 }
 
 function buildRecordIdsQuery(recordIds?: string[]) {
@@ -87,29 +94,32 @@ function buildRecordIdsQuery(recordIds?: string[]) {
   return `&recordIds=${encodeURIComponent(recordIds.join(","))}`;
 }
 
-export function getTrafficStats(groupBy: string, recordIds?: string[]) {
+export function getTrafficStats(groupBy: string, recordIds?: string[], options?: RequestOptions) {
   if (recordIds && recordIds.length > 0) {
     return request<TrafficStatsResponse>("/traffic-stats/filter", {
       method: "POST",
-      body: JSON.stringify({ groupBy, recordIds })
+      body: JSON.stringify({ groupBy, recordIds }),
+      ...options
     });
   }
 
   return request<TrafficStatsResponse>(
-    `/traffic-stats?groupBy=${encodeURIComponent(groupBy)}${buildRecordIdsQuery(recordIds)}`
+    `/traffic-stats?groupBy=${encodeURIComponent(groupBy)}${buildRecordIdsQuery(recordIds)}`,
+    { ...options }
   );
 }
 
-export function getTrafficInsights(recordIds?: string[]) {
+export function getTrafficInsights(recordIds?: string[], options?: RequestOptions) {
   if (recordIds && recordIds.length > 0) {
     return request<TrafficInsightResponse>("/traffic-insights/filter", {
       method: "POST",
-      body: JSON.stringify({ recordIds })
+      body: JSON.stringify({ recordIds }),
+      ...options
     });
   }
 
   const query = !recordIds || recordIds.length === 0 ? "" : `?recordIds=${encodeURIComponent(recordIds.join(","))}`;
-  return request<TrafficInsightResponse>(`/traffic-insights${query}`);
+  return request<TrafficInsightResponse>(`/traffic-insights${query}`, { ...options });
 }
 
 export function generateSimulation(payload: SimulationRequest) {
@@ -119,14 +129,15 @@ export function generateSimulation(payload: SimulationRequest) {
   });
 }
 
-export function getTrafficMap(recordIds: string[]) {
+export function getTrafficMap(recordIds: string[], options?: RequestOptions) {
   if (recordIds.length === 0) {
     return Promise.resolve<MapFeatureCollection>({ type: "FeatureCollection", features: [] });
   }
 
   return request<MapFeatureCollection>("/traffic-map/filter", {
     method: "POST",
-    body: JSON.stringify({ recordIds })
+    body: JSON.stringify({ recordIds }),
+    ...options
   });
 }
 

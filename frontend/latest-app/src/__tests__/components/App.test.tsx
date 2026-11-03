@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -579,6 +580,61 @@ describe("App", () => {
 
     expect(screen.getByText(/Página 1 de 1/i)).toBeInTheDocument();
     expect(screen.queryByText(/Página 2 de 2/i)).not.toBeInTheDocument();
+  });
+
+  describe("when the page opens", () => {
+    // Records every API request and lets it continue to the regular handlers (a handler that returns nothing
+    // passes the request on). A request counts as completed when it was not cancelled by the page.
+    function trackRequests() {
+      const sent = new Map<string, number>();
+      const completed = new Map<string, number>();
+      server.use(
+        http.all("http://localhost:8080/api/*", async ({ request }) => {
+          const url = new URL(request.url);
+          const key = `${request.method} ${url.pathname}${url.search}`;
+          sent.set(key, (sent.get(key) ?? 0) + 1);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (!request.signal.aborted) {
+            completed.set(key, (completed.get(key) ?? 0) + 1);
+          }
+        })
+      );
+      return { sent, completed };
+    }
+
+    it("sends each request once", async () => {
+      const { sent, completed } = trackRequests();
+
+      render(<App />);
+      expect(await screen.findByText(/^Conectado$/i)).toBeInTheDocument();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(Object.fromEntries(completed)).toEqual(Object.fromEntries(sent));
+      expect(Object.fromEntries(sent)).toEqual({
+        "GET /api/traffic-records/summary": 1,
+        "GET /api/traffic-stats?groupBy=hour": 1,
+        "GET /api/traffic-stats?groupBy=weekday": 1,
+        "GET /api/traffic-stats?groupBy=roadType": 1,
+        "GET /api/traffic-insights": 1,
+        "GET /api/traffic-records?page=0&size=20": 1
+      });
+    });
+
+    it("completes each request once even when React runs the effects twice (StrictMode in development)", async () => {
+      const { sent, completed } = trackRequests();
+
+      render(
+        <StrictMode>
+          <App />
+        </StrictMode>
+      );
+      expect(await screen.findByText(/^Conectado$/i)).toBeInTheDocument();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const duplicated = [...completed.entries()].filter(([, times]) => times > 1);
+      expect(duplicated).toEqual([]);
+      expect(Object.keys(Object.fromEntries(completed))).toEqual(Object.keys(Object.fromEntries(sent)));
+    });
   });
 
   it("shows backend errors without crashing", async () => {

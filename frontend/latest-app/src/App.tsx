@@ -322,21 +322,29 @@ export default function App() {
   // so a slow, old response never overwrites a newer one.
   const dashboardRequestId = useRef(0);
   const recordsRequestId = useRef(0);
+  // A newer load, or leaving the page, cancels the requests of the previous one. In development, React runs the
+  // effects twice on purpose; cancelling the first run keeps it from competing with the second.
+  const dashboardAbort = useRef<AbortController | null>(null);
+  const recordsAbort = useRef<AbortController | null>(null);
 
   async function refreshDashboard(recordIds: string[] = appliedRecordIds) {
     const requestId = ++dashboardRequestId.current;
     const isLatest = () => requestId === dashboardRequestId.current;
+    dashboardAbort.current?.abort();
+    const controller = new AbortController();
+    dashboardAbort.current = controller;
+    const options = { signal: controller.signal };
     setLoading(true);
     setError(null);
 
     try {
       const [summary, byHour, byWeekday, byRoadType, insights, mapData] = await Promise.all([
-        getTrafficRecordSummary(recordIds),
-        getTrafficStats("hour", recordIds),
-        getTrafficStats("weekday", recordIds),
-        getTrafficStats("roadType", recordIds),
-        getTrafficInsights(recordIds),
-        getTrafficMap(recordIds)
+        getTrafficRecordSummary(recordIds, options),
+        getTrafficStats("hour", recordIds, options),
+        getTrafficStats("weekday", recordIds, options),
+        getTrafficStats("roadType", recordIds, options),
+        getTrafficInsights(recordIds, options),
+        getTrafficMap(recordIds, options)
       ]);
 
       if (!isLatest()) {
@@ -369,11 +377,17 @@ export default function App() {
   async function refreshRecordsPage(page: number, query: string) {
     const requestId = ++recordsRequestId.current;
     const isLatest = () => requestId === recordsRequestId.current;
+    recordsAbort.current?.abort();
+    const controller = new AbortController();
+    recordsAbort.current = controller;
     setRecordsLoading(true);
     setError(null);
 
     try {
-      const nextPage = await getTrafficRecords({ page, size: emptyRecordsPage.size, query });
+      const nextPage = await getTrafficRecords(
+        { page, size: emptyRecordsPage.size, query },
+        { signal: controller.signal }
+      );
       if (!isLatest()) {
         return;
       }
@@ -398,10 +412,12 @@ export default function App() {
 
   useEffect(() => {
     void refreshDashboard([]);
+    return () => dashboardAbort.current?.abort();
   }, []);
 
   useEffect(() => {
     void refreshRecordsPage(recordsRequest.page, recordsRequest.query);
+    return () => recordsAbort.current?.abort();
   }, [recordsRequest]);
 
   useEffect(() => {
