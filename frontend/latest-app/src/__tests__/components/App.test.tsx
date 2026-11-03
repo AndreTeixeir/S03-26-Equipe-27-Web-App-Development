@@ -15,13 +15,21 @@ vi.mock("react-leaflet", () => ({
   Popup: ({ children }: { children: ReactNode }) => <div>{children}</div>
 }));
 
+// The props each chart's y axis was rendered with, to check how its numbers are shown.
+const chartProbe = vi.hoisted(() => ({
+  yAxis: [] as Array<{ width?: number; tickFormatter?: (value: number) => string }>
+}));
+
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  AreaChart: () => <div data-testid="area-chart" />,
-  BarChart: () => <div data-testid="bar-chart" />,
+  AreaChart: ({ children }: { children?: ReactNode }) => <div data-testid="area-chart">{children}</div>,
+  BarChart: ({ children }: { children?: ReactNode }) => <div data-testid="bar-chart">{children}</div>,
   CartesianGrid: () => null,
   XAxis: () => null,
-  YAxis: () => null,
+  YAxis: (props: { width?: number; tickFormatter?: (value: number) => string }) => {
+    chartProbe.yAxis.push(props);
+    return null;
+  },
   Tooltip: () => null,
   Bar: () => <div data-testid="bar-series" />,
   Cell: () => null,
@@ -485,6 +493,28 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("button", { name: /Exportar JSON/i })).toBeInTheDocument();
+  });
+
+  it("formats the y axis numbers compactly and leaves room for them, so they are not cut", async () => {
+    chartProbe.yAxis.length = 0;
+
+    render(<App />);
+    await screen.findByText(/^Conectado$/i);
+
+    await waitFor(() => expect(chartProbe.yAxis.length).toBeGreaterThanOrEqual(3));
+    // The number formatter separates the abbreviation with a no-break space; compare with a plain space.
+    const tick = (axis: { tickFormatter?: (value: number) => string }, value: number) =>
+      axis.tickFormatter?.(value).replace(/\s/g, " ");
+
+    for (const axis of chartProbe.yAxis) {
+      expect(axis.tickFormatter).toBeTypeOf("function");
+      expect(tick(axis, 0)).toBe("0");
+      expect(tick(axis, 950)).toBe("950");
+      expect(tick(axis, 1234)).toBe("1,2 mil");
+      expect(tick(axis, 999_000)).toBe("999 mil");
+      expect(tick(axis, 1_500_000)).toBe("1,5 mi");
+      expect(axis.width).toBeGreaterThanOrEqual(56);
+    }
   });
 
   it("renders accessibility anchors used by the current layout", async () => {

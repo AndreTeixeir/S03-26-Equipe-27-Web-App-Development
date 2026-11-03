@@ -89,6 +89,9 @@ function formatLabel(value: string) {
   return value.replace(/_/g, " ").toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 }
 
+// Room for the widest compact tick (such as "999 mil") plus the gap to the axis; 44 cut longer numbers.
+const yAxisWidth = 64;
+
 function formatCompactNumber(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     notation: "compact",
@@ -184,7 +187,13 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
             <BarChart data={data} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(18, 60, 99, 0.12)" vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} />
-              <YAxis tickLine={false} axisLine={false} tickMargin={10} width={44} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                width={yAxisWidth}
+                tickFormatter={formatCompactNumber}
+              />
               <Tooltip
                 cursor={{ fill: "rgba(242, 92, 58, 0.08)" }}
                 contentStyle={{ borderRadius: 18, border: "1px solid rgba(18, 60, 99, 0.12)" }}
@@ -205,7 +214,13 @@ function ChartCard({ eyebrow, title, tone, stats, chart }: ChartCardProps) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(18, 60, 99, 0.12)" vertical={false} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} />
-              <YAxis tickLine={false} axisLine={false} tickMargin={10} width={44} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                width={yAxisWidth}
+                tickFormatter={formatCompactNumber}
+              />
               <Tooltip
                 cursor={{ stroke: "rgba(18, 60, 99, 0.15)", strokeWidth: 1 }}
                 contentStyle={{ borderRadius: 18, border: "1px solid rgba(18, 60, 99, 0.12)" }}
