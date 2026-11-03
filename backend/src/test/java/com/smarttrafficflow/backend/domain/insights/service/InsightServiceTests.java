@@ -114,6 +114,21 @@ class InsightServiceTests {
         assertThat(response.insights().get(1)).contains("Tipo de via com maior volume agregado");
     }
 
+    @Test
+    @DisplayName("finds the peak hour when the summed volume exceeds Integer.MAX_VALUE")
+    void findsPeakWhenSumsExceedIntegerRange() {
+        when(trafficRecordService.findAllEntities()).thenReturn(List.of(
+                recordAt(8, "ARTERIAL", Integer.MAX_VALUE),
+                recordAt(8, "ARTERIAL", Integer.MAX_VALUE),
+                recordAt(9, "LOCAL", 1000)
+        ));
+
+        TrafficInsightResponse response = insightService.generateInsights(null);
+
+        assertThat(response.insights().get(0)).contains("8h");
+        assertThat(response.insights().get(1)).contains("ARTERIAL");
+    }
+
     private TrafficRecord recordAt(int hour, String roadType, int volume) {
         TrafficRecord record = new TrafficRecord();
         record.setId(UUID.randomUUID());

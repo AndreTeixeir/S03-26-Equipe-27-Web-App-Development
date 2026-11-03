@@ -30,7 +30,7 @@ public class AnalyticsService {
                 ? trafficRecordService.findAllEntities()
                 : trafficRecordService.findEntitiesByIds(recordIds);
         log.info("Analytics requested with groupBy={} using {} records", groupBy, records.size());
-        Map<String, Integer> aggregated = new LinkedHashMap<>();
+        Map<String, Long> aggregated = new LinkedHashMap<>();
 
         for (TrafficRecord record : records) {
             String key = switch (groupBy) {
@@ -43,7 +43,7 @@ public class AnalyticsService {
                 }
             };
 
-            aggregated.merge(key, record.getVehicleVolume(), Integer::sum);
+            aggregated.merge(key, record.getVehicleVolume().longValue(), Long::sum);
         }
 
         log.info("Analytics generated {} buckets for groupBy={}", aggregated.size(), groupBy);

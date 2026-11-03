@@ -38,20 +38,21 @@ public class InsightService {
             return new TrafficInsightResponse(insights);
         }
 
-        Map<Integer, Integer> byHour = new HashMap<>();
-        Map<String, Integer> byRoadType = new HashMap<>();
+        Map<Integer, Long> byHour = new HashMap<>();
+        Map<String, Long> byRoadType = new HashMap<>();
 
         for (TrafficRecord record : records) {
-            byHour.merge(record.getTimestamp().getHour(), record.getVehicleVolume(), Integer::sum);
-            byRoadType.merge(safeValue(record.getRoadType(), "UNKNOWN"), record.getVehicleVolume(), Integer::sum);
+            long volume = record.getVehicleVolume().longValue();
+            byHour.merge(record.getTimestamp().getHour(), volume, Long::sum);
+            byRoadType.merge(safeValue(record.getRoadType(), "UNKNOWN"), volume, Long::sum);
         }
 
-        Map.Entry<Integer, Integer> peakHour = byHour.entrySet().stream()
+        Map.Entry<Integer, Long> peakHour = byHour.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .orElseThrow();
 
-        Map.Entry<String, Integer> peakRoadType = byRoadType.entrySet().stream()
-                .max(Comparator.comparingInt(Map.Entry::getValue))
+        Map.Entry<String, Long> peakRoadType = byRoadType.entrySet().stream()
+                .max(Comparator.comparingLong(Map.Entry::getValue))
                 .orElseThrow();
 
         insights.add("Horario com maior volume agregado: " + peakHour.getKey() + "h.");

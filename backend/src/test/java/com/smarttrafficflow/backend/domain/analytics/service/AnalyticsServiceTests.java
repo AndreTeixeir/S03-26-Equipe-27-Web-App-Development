@@ -44,7 +44,7 @@ class AnalyticsServiceTests {
         TrafficStatsResponse response = analyticsService.getStats("hour", List.of());
 
         assertThat(response.labels()).containsExactly("08", "17");
-        assertThat(response.values()).containsExactly(150, 200);
+        assertThat(response.values()).containsExactly(150L, 200L);
     }
 
     @Test
@@ -60,7 +60,7 @@ class AnalyticsServiceTests {
         TrafficStatsResponse response = analyticsService.getStats("weekday", recordIds);
 
         assertThat(response.labels()).containsExactly("MONDAY", "FRIDAY");
-        assertThat(response.values()).containsExactly(180, 200);
+        assertThat(response.values()).containsExactly(180L, 200L);
         verify(trafficRecordService).findEntitiesByIds(recordIds);
     }
 
@@ -75,7 +75,7 @@ class AnalyticsServiceTests {
         TrafficStatsResponse response = analyticsService.getStats("roadType", null);
 
         assertThat(response.labels()).containsExactly("UNKNOWN");
-        assertThat(response.values()).containsExactly(80);
+        assertThat(response.values()).containsExactly(80L);
     }
 
     @Test
@@ -91,7 +91,7 @@ class AnalyticsServiceTests {
         TrafficStatsResponse response = analyticsService.getStats("roadType", recordIds);
 
         assertThat(response.labels()).containsExactly("ARTERIAL", "HIGHWAY");
-        assertThat(response.values()).containsExactly(180, 200);
+        assertThat(response.values()).containsExactly(180L, 200L);
         verify(trafficRecordService).findEntitiesByIds(recordIds);
     }
 
@@ -114,6 +114,20 @@ class AnalyticsServiceTests {
         assertThatThrownBy(() -> analyticsService.getStats("invalid", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("groupBy invalido");
+    }
+
+    @Test
+    @DisplayName("sums volumes beyond Integer.MAX_VALUE without overflowing")
+    void sumsVolumesBeyondIntegerRange() {
+        when(trafficRecordService.findAllEntities()).thenReturn(List.of(
+                recordAt(8, "ARTERIAL", Integer.MAX_VALUE),
+                recordAt(8, "ARTERIAL", Integer.MAX_VALUE)
+        ));
+
+        TrafficStatsResponse response = analyticsService.getStats("hour", null);
+
+        assertThat(response.labels()).containsExactly("08");
+        assertThat(response.values()).containsExactly(2L * Integer.MAX_VALUE);
     }
 
     private TrafficRecord recordAt(int hour, String roadType, int volume) {
