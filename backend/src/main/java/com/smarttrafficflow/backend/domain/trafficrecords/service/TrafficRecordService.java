@@ -95,22 +95,6 @@ public class TrafficRecordService {
         );
     }
 
-    public List<TrafficRecord> findAllEntities() {
-        List<TrafficRecord> records = repository.findAllWithStreet();
-        log.debug("TrafficRecord findAllEntities returned {} records", records.size());
-        return records;
-    }
-
-    public List<TrafficRecord> findEntitiesByIds(List<UUID> recordIds) {
-        if (recordIds == null || recordIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<TrafficRecord> records = repository.findAllByIdInWithStreet(recordIds);
-        log.debug("TrafficRecord findEntitiesByIds returned {} records from {} ids", records.size(), recordIds.size());
-        return records;
-    }
-
     public List<TrafficRecordRepository.TrafficMapFeatureView> findMapFeaturesByRecordIds(List<UUID> recordIds) {
         if (recordIds == null || recordIds.isEmpty()) {
             return List.of();

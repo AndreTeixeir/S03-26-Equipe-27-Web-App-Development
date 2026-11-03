@@ -172,28 +172,6 @@ class TrafficRecordServiceTests {
     }
 
     @Test
-    @DisplayName("returns an empty list when no ids are provided for filtered entity lookup")
-    void returnsEmptyListForEmptyIdFilter() {
-        assertThat(trafficRecordService.findEntitiesByIds(List.of())).isEmpty();
-        verify(trafficRecordRepository, never()).findAllByIdInWithStreet(any());
-    }
-
-    @Test
-    @DisplayName("delegates filtered entity lookup to the repository when ids are provided")
-    void delegatesFilteredEntityLookup() {
-        List<UUID> recordIds = List.of(UUID.randomUUID());
-        when(trafficRecordRepository.findAllByIdInWithStreet(recordIds)).thenReturn(List.of(
-                entity("LOCAL", 80, "Rua Um", 303L)
-        ));
-
-        List<TrafficRecord> entities = trafficRecordService.findEntitiesByIds(recordIds);
-
-        assertThat(entities).hasSize(1);
-        assertThat(entities.get(0).getStreet().getName()).isEqualTo("Rua Um");
-        verify(trafficRecordRepository).findAllByIdInWithStreet(recordIds);
-    }
-
-    @Test
     @DisplayName("returns an empty list when no ids are provided for map features")
     void returnsEmptyMapFeaturesForEmptyIdFilter() {
         assertThat(trafficRecordService.findMapFeaturesByRecordIds(List.of())).isEmpty();
