@@ -133,6 +133,16 @@ class InsightServiceTests {
     }
 
     @Test
+    @DisplayName("falls back to the no-data insight if the two queries disagree (hours found, no road types)")
+    void fallsBackWhenTheRoadTypesAreMissing() {
+        stub(null, totals("8", 100L), totals());
+
+        TrafficInsightResponse response = insightService.generateInsights(null);
+
+        assertThat(response.insights()).containsExactly("Sem dados suficientes para gerar insights.");
+    }
+
+    @Test
     @DisplayName("observes the hours in the configured time zone")
     void usesTheConfiguredTimeZone() {
         InsightService inUtc = new InsightService(aggregationRepository, new AppTimeZone("UTC"));

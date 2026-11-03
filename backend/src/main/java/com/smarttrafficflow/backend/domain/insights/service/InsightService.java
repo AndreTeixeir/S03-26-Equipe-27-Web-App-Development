@@ -31,14 +31,17 @@ public class InsightService {
         Map<String, Long> byHour = aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, timeZone.id(), recordIds);
         List<String> insights = new ArrayList<>();
 
-        if (byHour.isEmpty()) {
+        Map<String, Long> byRoadType = byHour.isEmpty()
+                ? Map.of()
+                : aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, timeZone.id(), recordIds);
+
+        // Both queries read the same records, so they are empty together. If they ever disagree, say there is no data
+        // instead of failing on a missing road type.
+        if (byHour.isEmpty() || byRoadType.isEmpty()) {
             insights.add("Sem dados suficientes para gerar insights.");
             log.warn("Insight generation requested without data");
             return new TrafficInsightResponse(insights);
         }
-
-        Map<String, Long> byRoadType =
-                aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, timeZone.id(), recordIds);
 
         // Ties keep the first candidate in the presentation order, so the same data gives the same text.
         int peakHour = -1;
