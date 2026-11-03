@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../mocks/server";
+import { mockSummary } from "../mocks/handlers";
 import type { PagedResponse, TrafficRecord, TrafficRecordSummary } from "../../types/api";
 
 vi.mock("react-leaflet", () => ({
@@ -42,6 +43,72 @@ describe("App", () => {
       expect(screen.getByText(/Conectado/i)).toBeInTheDocument();
       expect(screen.getByText(/Veículos capturados/i)).toBeInTheDocument();
     });
+  });
+
+  it("shows the connection as lost, not as connected, when the last load failed", async () => {
+    server.use(
+      http.get("http://localhost:8080/api/traffic-records/summary", () =>
+        HttpResponse.json({ message: "backend caiu" }, { status: 500 })
+      )
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText(/Sem conexão/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Conectado$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Sincronizando$/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the connection as lost when the backend cannot be reached", async () => {
+    server.use(http.get("http://localhost:8080/api/traffic-records/summary", () => HttpResponse.error()));
+
+    render(<App />);
+
+    expect(await screen.findByText(/Sem conexão/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Conectado$/i)).not.toBeInTheDocument();
+  });
+
+  it("shows syncing while loading and connected only after a successful load", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("http://localhost:8080/api/traffic-insights", async () => {
+        await gate;
+        return HttpResponse.json({ insights: [] });
+      })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText(/^Sincronizando$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Conectado$/i)).not.toBeInTheDocument();
+
+    release();
+
+    expect(await screen.findByText(/^Conectado$/i)).toBeInTheDocument();
+  });
+
+  it("goes back to connected when a later load succeeds after a failure", async () => {
+    const user = userEvent.setup();
+    let failing = true;
+    server.use(
+      http.get("http://localhost:8080/api/traffic-records/summary", () =>
+        failing ? HttpResponse.json({ message: "backend caiu" }, { status: 500 }) : HttpResponse.json(mockSummary)
+      )
+    );
+
+    render(<App />);
+    expect(await screen.findByText(/Sem conexão/i)).toBeInTheDocument();
+
+    failing = false;
+    await user.click(screen.getByRole("button", { name: /Formulários e registros/i }));
+    await user.click(await screen.findByLabelText(/Selecionar registro rec-1/i));
+    await user.click(screen.getByRole("button", { name: /Aplicar seleção/i }));
+    await user.click(screen.getByRole("button", { name: /Página de insights/i }));
+
+    expect(await screen.findByText(/^Conectado$/i)).toBeInTheDocument();
   });
 
   it("starts on the insights view and can switch back to it", async () => {

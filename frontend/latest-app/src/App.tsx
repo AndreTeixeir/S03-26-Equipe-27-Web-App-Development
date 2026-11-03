@@ -294,6 +294,8 @@ export default function App() {
   const [tableQuery, setTableQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState("Conectando à central de tráfego.");
   const [loading, setLoading] = useState(true);
+  // "Conectado" is only true while the last dashboard load succeeded.
+  const [lastLoadSucceeded, setLastLoadSucceeded] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [bulkSelectionLoading, setBulkSelectionLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<"record" | "simulation" | "export" | null>(null);
@@ -331,6 +333,7 @@ export default function App() {
         setDashboard({ summary, byHour, byWeekday, byRoadType, insights, mapData });
       });
 
+      setLastLoadSucceeded(true);
       setStatusMessage(`Conexão ativa estabelecida com ${API_BASE_URL}.`);
     } catch (caughtError) {
       if (!isLatest()) {
@@ -339,6 +342,7 @@ export default function App() {
 
       const message =
         caughtError instanceof ApiError ? caughtError.message : "A central não conseguiu alcançar o backend.";
+      setLastLoadSucceeded(false);
       setError(message);
       setStatusMessage("O backend precisa de atenção.");
     } finally {
@@ -654,9 +658,13 @@ export default function App() {
             </button>
           </div>
           <div className="status-strip">
-            <span className={`status-dot ${loading ? "status-dot--loading" : ""}`} />
+            <span
+              className={`status-dot ${loading ? "status-dot--loading" : ""} ${
+                !loading && !lastLoadSucceeded ? "status-dot--offline" : ""
+              }`.trim()}
+            />
             <strong>Pulso ao vivo</strong>
-            <span>{loading ? "Sincronizando" : "Conectado"}</span>
+            <span>{loading ? "Sincronizando" : lastLoadSucceeded ? "Conectado" : "Sem conexão"}</span>
           </div>
           <div className="hero-metrics">
             <div>
