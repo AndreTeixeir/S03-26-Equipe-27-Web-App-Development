@@ -8,6 +8,7 @@ import com.smarttrafficflow.backend.api.dto.TrafficRecordResponse;
 import com.smarttrafficflow.backend.api.dto.TrafficRecordSummaryResponse;
 import com.smarttrafficflow.backend.domain.trafficrecords.service.TrafficRecordService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +48,10 @@ public class TrafficRecordController {
 
     @GetMapping
     public PagedTrafficRecordResponse findPage(
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "deve ser maior ou igual a 0") int page,
+            // 10 million pages of at most 100 records stay far below the Integer.MAX_VALUE limit of the page offset.
+            @RequestParam(defaultValue = "0")
+            @Min(value = 0, message = "deve ser maior ou igual a 0")
+            @Max(value = 10_000_000, message = "deve ser menor ou igual a 10000000") int page,
             @RequestParam(defaultValue = "20") @Min(value = 1, message = "deve ser maior ou igual a 1") int size,
             @RequestParam(required = false) String query
     ) {
