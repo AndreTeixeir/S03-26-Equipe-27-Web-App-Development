@@ -29,22 +29,31 @@ public class AnalyticsService {
     public TrafficStatsResponse getStats(String groupBy, List<UUID> recordIds) {
         StatsGroupBy dimension = StatsGroupBy.parse(groupBy);
         Map<String, Long> totals = aggregationRepository.sumVolumeBy(dimension, timeZone.id(), recordIds);
-        log.info("Analytics requested with groupBy={} produced {} buckets", groupBy, totals.size());
 
         List<String> labels = new ArrayList<>();
         List<Long> values = new ArrayList<>();
-        totals.forEach((bucket, total) -> {
-            labels.add(toLabel(dimension, bucket));
-            values.add(total);
-        });
-        return new TrafficStatsResponse(labels, values);
-    }
+        switch (dimension) {
+            case HOUR -> {
+                for (int hour = 0; hour < 24; hour++) {
+                    labels.add(String.format("%02d", hour));
+                    values.add(totals.getOrDefault(String.valueOf(hour), 0L));
+                }
+            }
+            case WEEKDAY -> {
+                for (DayOfWeek day : DayOfWeek.values()) {
+                    labels.add(day.name());
+                    values.add(totals.getOrDefault(String.valueOf(day.getValue()), 0L));
+                }
+            }
+            case ROAD_TYPE -> {
+                for (String roadType : RoadTypes.inPresentationOrder(totals.keySet())) {
+                    labels.add(roadType);
+                    values.add(totals.get(roadType));
+                }
+            }
+        }
 
-    private String toLabel(StatsGroupBy dimension, String bucket) {
-        return switch (dimension) {
-            case HOUR -> String.format("%02d", Integer.parseInt(bucket));
-            case WEEKDAY -> DayOfWeek.of(Integer.parseInt(bucket)).name();
-            case ROAD_TYPE -> bucket;
-        };
+        log.info("Analytics requested with groupBy={} returned {} buckets", groupBy, labels.size());
+        return new TrafficStatsResponse(labels, values);
     }
 }

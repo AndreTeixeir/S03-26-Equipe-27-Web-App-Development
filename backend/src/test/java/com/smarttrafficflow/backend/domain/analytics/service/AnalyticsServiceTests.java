@@ -49,8 +49,10 @@ class AnalyticsServiceTests {
 
         TrafficStatsResponse response = analyticsService.getStats("hour", List.of());
 
-        assertThat(response.labels()).containsExactly("08", "17");
-        assertThat(response.values()).containsExactly(150L, 200L);
+        assertThat(response.labels().get(8)).isEqualTo("08");
+        assertThat(response.labels().get(17)).isEqualTo("17");
+        assertThat(response.values().get(8)).isEqualTo(150L);
+        assertThat(response.values().get(17)).isEqualTo(200L);
     }
 
     @Test
@@ -62,8 +64,10 @@ class AnalyticsServiceTests {
 
         TrafficStatsResponse response = analyticsService.getStats("weekday", recordIds);
 
-        assertThat(response.labels()).containsExactly("MONDAY", "FRIDAY");
-        assertThat(response.values()).containsExactly(180L, 200L);
+        assertThat(response.labels().get(0)).isEqualTo("MONDAY");
+        assertThat(response.labels().get(4)).isEqualTo("FRIDAY");
+        assertThat(response.values().get(0)).isEqualTo(180L);
+        assertThat(response.values().get(4)).isEqualTo(200L);
         verify(aggregationRepository).sumVolumeBy(StatsGroupBy.WEEKDAY, ZONE, recordIds);
     }
 
@@ -82,6 +86,65 @@ class AnalyticsServiceTests {
     }
 
     @Test
+    @DisplayName("always returns the 24 hours, from 00 to 23, with zero for hours without records")
+    void returnsAll24HoursWithZeros() {
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, ZONE, null))
+                .thenReturn(totals("17", 200L, "8", 150L));
+
+        TrafficStatsResponse response = analyticsService.getStats("hour", null);
+
+        assertThat(response.labels()).hasSize(24).startsWith("00", "01", "02").endsWith("22", "23");
+        assertThat(response.values()).hasSize(24);
+        assertThat(response.values().get(8)).isEqualTo(150L);
+        assertThat(response.values().get(17)).isEqualTo(200L);
+        assertThat(response.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(350L);
+    }
+
+    @Test
+    @DisplayName("returns the 24 hours with zeros when there are no records")
+    void returnsAll24HoursWhenThereAreNoRecords() {
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, ZONE, null)).thenReturn(Map.of());
+
+        TrafficStatsResponse response = analyticsService.getStats("hour", null);
+
+        assertThat(response.labels()).hasSize(24);
+        assertThat(response.values()).hasSize(24).containsOnly(0L);
+    }
+
+    @Test
+    @DisplayName("always returns the 7 weekdays, from MONDAY to SUNDAY, with zero for days without records")
+    void returnsAll7WeekdaysWithZeros() {
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.WEEKDAY, ZONE, null))
+                .thenReturn(totals("7", 30L, "1", 180L));
+
+        TrafficStatsResponse response = analyticsService.getStats("weekday", null);
+
+        assertThat(response.labels()).containsExactly(
+                "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY");
+        assertThat(response.values()).containsExactly(180L, 0L, 0L, 0L, 0L, 0L, 30L);
+    }
+
+    @Test
+    @DisplayName("orders road types as LOCAL, ARTERIAL, HIGHWAY, other types, UNKNOWN last, only those present")
+    void ordersRoadTypesInAFixedOrder() {
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, ZONE, null))
+                .thenReturn(totals("UNKNOWN", 2L, "HIGHWAY", 1L, "RURAL", 3L, "LOCAL", 4L, "BETA", 6L));
+
+        TrafficStatsResponse response = analyticsService.getStats("roadType", null);
+
+        assertThat(response.labels()).containsExactly("LOCAL", "HIGHWAY", "BETA", "RURAL", "UNKNOWN");
+        assertThat(response.values()).containsExactly(4L, 1L, 6L, 3L, 2L);
+    }
+
+    @Test
+    @DisplayName("does not invent road types that have no records")
+    void omitsRoadTypesWithoutRecords() {
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, ZONE, null)).thenReturn(totals("HIGHWAY", 9L));
+
+        assertThat(analyticsService.getStats("roadType", null).labels()).containsExactly("HIGHWAY");
+    }
+
+    @Test
     @DisplayName("observes the statistics in the configured time zone")
     void usesTheConfiguredTimeZone() {
         AnalyticsService inUtc = new AnalyticsService(aggregationRepository, new AppTimeZone("UTC"));
@@ -93,11 +156,11 @@ class AnalyticsServiceTests {
     }
 
     @Test
-    @DisplayName("returns empty labels and values when there are no records")
+    @DisplayName("returns empty labels and values for road types when there are no records")
     void returnsEmptyStatsWhenThereAreNoRecords() {
-        when(aggregationRepository.sumVolumeBy(StatsGroupBy.HOUR, ZONE, null)).thenReturn(Map.of());
+        when(aggregationRepository.sumVolumeBy(StatsGroupBy.ROAD_TYPE, ZONE, null)).thenReturn(Map.of());
 
-        TrafficStatsResponse response = analyticsService.getStats("hour", null);
+        TrafficStatsResponse response = analyticsService.getStats("roadType", null);
 
         assertThat(response.labels()).isEmpty();
         assertThat(response.values()).isEmpty();
@@ -111,8 +174,8 @@ class AnalyticsServiceTests {
 
         TrafficStatsResponse response = analyticsService.getStats("hour", null);
 
-        assertThat(response.labels()).containsExactly("08");
-        assertThat(response.values()).containsExactly(2L * Integer.MAX_VALUE);
+        assertThat(response.labels().get(8)).isEqualTo("08");
+        assertThat(response.values().get(8)).isEqualTo(2L * Integer.MAX_VALUE);
     }
 
     @Test

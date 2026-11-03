@@ -110,7 +110,8 @@ class TrafficStatsApiIT {
 
         Map<String, Long> byWeekday = stats("weekday");
 
-        assertThat(byWeekday).containsAllEntriesOf(Map.of("MONDAY", 180L, "FRIDAY", 200L));
+        assertThat(byWeekday).hasSize(7);
+        assertThat(nonZero(byWeekday)).containsExactlyInAnyOrderEntriesOf(Map.of("MONDAY", 180L, "FRIDAY", 200L));
     }
 
     @Test
@@ -142,8 +143,8 @@ class TrafficStatsApiIT {
 
         Map<String, Long> byHour = stats("hour");
 
-        assertThat(byHour).containsAllEntriesOf(Map.of("05", 150L, "14", 200L));
-        assertThat(byHour).hasSize(2);
+        assertThat(byHour).hasSize(24);
+        assertThat(nonZero(byHour)).containsExactlyInAnyOrderEntriesOf(Map.of("05", 150L, "14", 200L));
     }
 
     @Test
@@ -152,8 +153,53 @@ class TrafficStatsApiIT {
         // 2026-11-03T01:30:00Z is Tuesday 01:30 in UTC, but Monday 22:30 in São Paulo.
         data.insertRecord(streetId, "2026-11-03T01:30:00Z", "LOCAL", 100);
 
-        assertThat(stats("hour")).containsExactlyEntriesOf(Map.of("22", 100L));
-        assertThat(stats("weekday")).containsExactlyEntriesOf(Map.of("MONDAY", 100L));
+        assertThat(nonZero(stats("hour"))).containsExactlyEntriesOf(Map.of("22", 100L));
+        assertThat(nonZero(stats("weekday"))).containsExactlyEntriesOf(Map.of("MONDAY", 100L));
+    }
+
+    @Test
+    @DisplayName("returns the 24 hours and the 7 weekdays in order, with zeros, even with an empty database")
+    void returnsFullOrderedBucketsWithEmptyDatabase() throws Exception {
+        data.clear();
+
+        mockMvc.perform(get("/api/traffic-stats").param("groupBy", "hour"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.labels.length()").value(24))
+                .andExpect(jsonPath("$.labels[0]").value("00"))
+                .andExpect(jsonPath("$.labels[23]").value("23"))
+                .andExpect(jsonPath("$.values[?(@ != 0)]").isEmpty());
+        mockMvc.perform(get("/api/traffic-stats").param("groupBy", "weekday"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.labels.length()").value(7))
+                .andExpect(jsonPath("$.labels[0]").value("MONDAY"))
+                .andExpect(jsonPath("$.labels[6]").value("SUNDAY"));
+        mockMvc.perform(get("/api/traffic-stats").param("groupBy", "roadType"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.labels").isEmpty());
+    }
+
+    @Test
+    @DisplayName("returns road types in the fixed order with UNKNOWN last")
+    void returnsRoadTypesInTheFixedOrder() throws Exception {
+        data.insertRecord(streetId, "2024-06-17T12:00:00Z", "HIGHWAY", 10);
+        data.insertRecord(streetId, "2024-06-17T12:00:00Z", " ", 20);
+        data.insertRecord(streetId, "2024-06-17T12:00:00Z", "LOCAL", 30);
+        data.insertRecord(streetId, "2024-06-17T12:00:00Z", "ARTERIAL", 40);
+
+        mockMvc.perform(get("/api/traffic-stats").param("groupBy", "roadType"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.labels[0]").value("LOCAL"))
+                .andExpect(jsonPath("$.labels[1]").value("ARTERIAL"))
+                .andExpect(jsonPath("$.labels[2]").value("HIGHWAY"))
+                .andExpect(jsonPath("$.labels[3]").value("UNKNOWN"))
+                .andExpect(jsonPath("$.values[0]").value(30))
+                .andExpect(jsonPath("$.values[3]").value(20));
+    }
+
+    private static Map<String, Long> nonZero(Map<String, Long> buckets) {
+        Map<String, Long> result = new LinkedHashMap<>(buckets);
+        result.values().removeIf(total -> total == 0L);
+        return result;
     }
 
     private Map<String, Long> stats(String groupBy) throws Exception {
