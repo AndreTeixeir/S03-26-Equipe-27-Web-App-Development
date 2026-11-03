@@ -379,6 +379,93 @@ describe("App", () => {
     expect(document.querySelectorAll("[aria-live='polite']").length).toBeGreaterThan(0);
   });
 
+  it("ignores a slow dashboard response that arrives after a newer one", async () => {
+    const user = userEvent.setup();
+    let releaseSlowResponse!: () => void;
+    const slowResponse = new Promise<void>((resolve) => {
+      releaseSlowResponse = resolve;
+    });
+    server.use(
+      http.get("http://localhost:8080/api/traffic-records/summary", async () => {
+        await slowResponse;
+        return HttpResponse.json({
+          recordCount: 111,
+          totalVehicleVolume: 9999,
+          uniqueStreetCount: 5,
+          averageVehicleVolume: 90,
+          latestTimestamp: "2024-06-17T17:30:00Z"
+        } satisfies TrafficRecordSummary);
+      })
+    );
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+    await user.click(await screen.findByLabelText(/Selecionar registro rec-1/i));
+    await user.click(screen.getByRole("button", { name: /Aplicar seleção/i }));
+    expect(await screen.findByText(/^1 registros no contexto atual/i)).toBeInTheDocument();
+
+    releaseSlowResponse();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(screen.getByText(/^1 registros no contexto atual/i)).toBeInTheDocument();
+    expect(screen.queryByText(/111 registros no contexto atual/i)).not.toBeInTheDocument();
+  });
+
+  it("ignores a slow records page that arrives after a newer filter", async () => {
+    const user = userEvent.setup();
+    const pagedRecords = Array.from({ length: 22 }, (_, index) => ({
+      id: `page-rec-${index + 1}`,
+      timestamp: "2024-06-17T08:00:00Z",
+      roadType: "LOCAL",
+      vehicleVolume: 100 + index,
+      eventType: null,
+      weather: null,
+      streetId: `street-${index + 1}`,
+      streetOsmWayId: 1000 + index,
+      streetName: `Rua ${index + 1}`
+    })) satisfies TrafficRecord[];
+    let releaseSecondPage!: () => void;
+    const secondPage = new Promise<void>((resolve) => {
+      releaseSecondPage = resolve;
+    });
+
+    server.use(
+      http.get("http://localhost:8080/api/traffic-records", async ({ request }) => {
+        const url = new URL(request.url);
+        const page = Number(url.searchParams.get("page") ?? "0");
+        const size = Number(url.searchParams.get("size") ?? "20");
+        const query = (url.searchParams.get("query") ?? "").toLowerCase();
+        if (page === 1) {
+          await secondPage;
+        }
+        const filtered = pagedRecords.filter((record) => !query || (record.streetName ?? "").toLowerCase().includes(query));
+        return HttpResponse.json({
+          items: filtered.slice(page * size, page * size + size),
+          page,
+          size,
+          totalItems: filtered.length,
+          totalPages: Math.ceil(filtered.length / size)
+        } satisfies PagedResponse<TrafficRecord>);
+      })
+    );
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+    await screen.findByLabelText("Selecionar registro page-rec-1");
+    await user.click(screen.getByRole("button", { name: /Próxima página/i }));
+    await user.type(await screen.findByRole("searchbox", { name: /Filtro/i }), "Rua 22");
+
+    expect(await screen.findByText(/Página 1 de 1/i)).toBeInTheDocument();
+
+    releaseSecondPage();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(screen.getByText(/Página 1 de 1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Página 2 de 2/i)).not.toBeInTheDocument();
+  });
+
   it("shows backend errors without crashing", async () => {
     server.use(
       http.get("http://localhost:8080/api/traffic-records/summary", () =>

@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
@@ -302,7 +302,14 @@ export default function App() {
   const deferredQuery = useDeferredValue(tableQuery);
   const deferredStreetQuery = useDeferredValue(streetQuery);
 
+  // Each load takes a number. A response only updates the screen if its number is still the latest one,
+  // so a slow, old response never overwrites a newer one.
+  const dashboardRequestId = useRef(0);
+  const recordsRequestId = useRef(0);
+
   async function refreshDashboard(recordIds: string[] = appliedRecordIds) {
+    const requestId = ++dashboardRequestId.current;
+    const isLatest = () => requestId === dashboardRequestId.current;
     setLoading(true);
     setError(null);
 
@@ -316,36 +323,58 @@ export default function App() {
         getTrafficMap(recordIds)
       ]);
 
+      if (!isLatest()) {
+        return;
+      }
+
       startTransition(() => {
         setDashboard({ summary, byHour, byWeekday, byRoadType, insights, mapData });
       });
 
       setStatusMessage(`Conexão ativa estabelecida com ${API_BASE_URL}.`);
     } catch (caughtError) {
+      if (!isLatest()) {
+        return;
+      }
+
       const message =
         caughtError instanceof ApiError ? caughtError.message : "A central não conseguiu alcançar o backend.";
       setError(message);
       setStatusMessage("O backend precisa de atenção.");
     } finally {
-      setLoading(false);
+      if (isLatest()) {
+        setLoading(false);
+      }
     }
   }
 
   async function refreshRecordsPage(page: number, query: string) {
+    const requestId = ++recordsRequestId.current;
+    const isLatest = () => requestId === recordsRequestId.current;
     setRecordsLoading(true);
     setError(null);
 
     try {
       const nextPage = await getTrafficRecords({ page, size: emptyRecordsPage.size, query });
+      if (!isLatest()) {
+        return;
+      }
+
       startTransition(() => {
         setRecordsPage(nextPage);
       });
     } catch (caughtError) {
+      if (!isLatest()) {
+        return;
+      }
+
       const message =
         caughtError instanceof ApiError ? caughtError.message : "Não foi possível carregar os registros paginados.";
       setError(message);
     } finally {
-      setRecordsLoading(false);
+      if (isLatest()) {
+        setRecordsLoading(false);
+      }
     }
   }
 
