@@ -1,6 +1,7 @@
 package com.smarttrafficflow.backend.domain.analytics.service;
 
 import com.smarttrafficflow.backend.api.dto.TrafficStatsResponse;
+import com.smarttrafficflow.backend.config.AppTimeZone;
 import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficAggregationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,18 +18,17 @@ public class AnalyticsService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsService.class);
 
-    /** Time zone in which hours and weekdays are observed. */
-    private static final String ZONE = "UTC";
-
     private final TrafficAggregationRepository aggregationRepository;
+    private final AppTimeZone timeZone;
 
-    public AnalyticsService(TrafficAggregationRepository aggregationRepository) {
+    public AnalyticsService(TrafficAggregationRepository aggregationRepository, AppTimeZone timeZone) {
         this.aggregationRepository = aggregationRepository;
+        this.timeZone = timeZone;
     }
 
     public TrafficStatsResponse getStats(String groupBy, List<UUID> recordIds) {
         StatsGroupBy dimension = StatsGroupBy.parse(groupBy);
-        Map<String, Long> totals = aggregationRepository.sumVolumeBy(dimension, ZONE, recordIds);
+        Map<String, Long> totals = aggregationRepository.sumVolumeBy(dimension, timeZone.id(), recordIds);
         log.info("Analytics requested with groupBy={} produced {} buckets", groupBy, totals.size());
 
         List<String> labels = new ArrayList<>();

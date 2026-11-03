@@ -133,16 +133,27 @@ class TrafficStatsApiIT {
     }
 
     @Test
-    @DisplayName("sums the volume per hour")
+    @DisplayName("sums the volume per hour, observed in America/Sao_Paulo")
     void sumsVolumePerHour() throws Exception {
+        // São Paulo is UTC-3: 08:00Z and 08:30Z are 05h; 17:00Z is 14h.
         data.insertRecord(streetId, "2024-06-17T08:00:00Z", "LOCAL", 100);
         data.insertRecord(streetId, "2024-06-17T08:30:00Z", "LOCAL", 50);
         data.insertRecord(streetId, "2024-06-17T17:00:00Z", "LOCAL", 200);
 
         Map<String, Long> byHour = stats("hour");
 
-        assertThat(byHour).containsAllEntriesOf(Map.of("08", 150L, "17", 200L));
+        assertThat(byHour).containsAllEntriesOf(Map.of("05", 150L, "14", 200L));
         assertThat(byHour).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("observes the hour and the weekday in America/Sao_Paulo by default (day rollover)")
+    void observesTheDayRolloverInSaoPaulo() throws Exception {
+        // 2026-11-03T01:30:00Z is Tuesday 01:30 in UTC, but Monday 22:30 in São Paulo.
+        data.insertRecord(streetId, "2026-11-03T01:30:00Z", "LOCAL", 100);
+
+        assertThat(stats("hour")).containsExactlyEntriesOf(Map.of("22", 100L));
+        assertThat(stats("weekday")).containsExactlyEntriesOf(Map.of("MONDAY", 100L));
     }
 
     private Map<String, Long> stats(String groupBy) throws Exception {

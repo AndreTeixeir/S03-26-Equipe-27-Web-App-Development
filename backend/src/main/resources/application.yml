@@ -29,6 +29,8 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  # Time zone in which hours and weekdays of the records are observed (statistics and insights).
+  timezone: ${APP_TIMEZONE:America/Sao_Paulo}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173}
   rate-limit:
