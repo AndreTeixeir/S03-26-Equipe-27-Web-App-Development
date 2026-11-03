@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @DisplayName("Write rate limit MVC integration tests")
-class WriteRateLimitITTests {
+class WriteRateLimitTests {
 
     private static final String ALLOWED_ORIGIN = "http://localhost:5173";
 

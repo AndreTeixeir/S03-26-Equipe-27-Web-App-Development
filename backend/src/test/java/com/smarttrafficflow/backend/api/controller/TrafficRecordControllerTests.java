@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(GlobalExceptionHandler.class)
 @DisplayName("TrafficRecordController MVC integration tests")
-class TrafficRecordControllerITTests {
+class TrafficRecordControllerTests {
 
     @Autowired
     private MockMvc mockMvc;

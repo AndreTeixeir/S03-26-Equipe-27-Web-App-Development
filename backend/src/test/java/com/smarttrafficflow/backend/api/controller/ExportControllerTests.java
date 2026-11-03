@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(GlobalExceptionHandler.class)
 @DisplayName("ExportController MVC integration tests")
-class ExportControllerITTests {
+class ExportControllerTests {
 
     @Autowired
     private MockMvc mockMvc;

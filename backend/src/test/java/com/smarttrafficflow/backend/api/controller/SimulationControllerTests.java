@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(GlobalExceptionHandler.class)
 @DisplayName("SimulationController MVC integration tests")
-class SimulationControllerITTests {
+class SimulationControllerTests {
 
     @Autowired
     private MockMvc mockMvc;

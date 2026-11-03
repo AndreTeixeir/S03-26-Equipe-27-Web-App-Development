@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest({StreetController.class, SimulationController.class})
 @ActiveProfiles("test")
 @DisplayName("CORS configuration MVC integration tests")
-class CorsConfigITTests {
+class CorsConfigTests {
 
     private static final String ALLOWED_ORIGIN = "http://localhost:5173";
 

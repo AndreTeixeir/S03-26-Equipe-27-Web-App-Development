@@ -28,7 +28,7 @@ Execução no perfil padrão:
 
 ```bash
 ./mvnw clean package
-./mvnw test
+./mvnw verify   # unitários (surefire, *Tests) e de integração (failsafe, *IT; precisa de Docker)
 ```
 
 ## Variáveis de ambiente

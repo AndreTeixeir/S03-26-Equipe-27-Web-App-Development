@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Skipped when the variable is set in the environment running the tests, since it would satisfy the placeholder.
  */
 @DisplayName("Datasource password has no default value")
-class DatasourcePasswordRequiredTests {
+class DatasourcePasswordRequiredIT {
 
     private ApplicationContextRunner runner;
 

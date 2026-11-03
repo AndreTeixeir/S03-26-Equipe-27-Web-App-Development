@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Import(PostgisTestcontainersConfiguration.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DisplayName("StreetGeoJsonImportRunner integration tests")
-class StreetGeoJsonImportRunnerTests {
+class StreetGeoJsonImportRunnerIT {
 
     private static final long TEST_OSM_ID_START = 990_000_000L;
     private static final long TEST_OSM_ID_END = 990_999_999L;

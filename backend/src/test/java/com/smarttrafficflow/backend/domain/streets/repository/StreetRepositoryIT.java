@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import(PostgisTestcontainersConfiguration.class)
 @DisplayName("StreetRepository integration tests")
-class StreetRepositoryTests {
+class StreetRepositoryIT {
 
     @Autowired
     private StreetRepository streetRepository;

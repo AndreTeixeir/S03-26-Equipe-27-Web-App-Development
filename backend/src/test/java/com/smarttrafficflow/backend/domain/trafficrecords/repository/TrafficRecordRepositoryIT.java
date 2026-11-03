@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import(PostgisTestcontainersConfiguration.class)
 @DisplayName("TrafficRecordRepository integration tests")
-class TrafficRecordRepositoryTests {
+class TrafficRecordRepositoryIT {
 
     private static final String CENTRAL_GEOMETRY =
             "{\"type\":\"LineString\",\"coordinates\":[[-46.6333,-23.5505],[-46.634,-23.551]]}";
