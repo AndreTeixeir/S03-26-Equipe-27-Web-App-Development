@@ -453,6 +453,7 @@ button {
 .map-legend {
   margin: 0;
   padding: 10px 16px;
+  border-radius: 16px;
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--muted);

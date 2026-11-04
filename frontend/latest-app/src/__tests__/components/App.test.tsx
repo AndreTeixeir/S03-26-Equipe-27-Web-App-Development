@@ -1132,6 +1132,45 @@ describe("App", () => {
     });
   });
 
+  describe("map legend placement", () => {
+    // jsdom does not measure layout, so this fixes the structure that caused the defect. The frame (.map-shell) has
+    // overflow: hidden and the map fills 100% of its height. Anything else inside the frame makes the content taller
+    // than the frame: the end of the map (with the OpenStreetMap credit) is cut and, when the map takes focus on a
+    // click, the browser scrolls the frame and the legend above the map disappears.
+    async function openMapPage(page: "insights" | "records") {
+      const user = userEvent.setup();
+      render(<App />);
+      if (page === "records") {
+        await user.click(await screen.findByRole("button", { name: /Formulários e registros/i }));
+      }
+      const legend = await screen.findByText("Mostrando o registro mais recente");
+      const frame = screen.getByTestId("map-container").closest(".map-shell");
+      expect(frame).not.toBeNull();
+      return { legend, frame: frame as HTMLElement };
+    }
+
+    it.each([
+      ["insights", "insights" as const],
+      ["records", "records" as const]
+    ])("keeps only the map inside the frame that clips it (%s page)", async (_name, page) => {
+      const { frame } = await openMapPage(page);
+
+      expect(frame.children).toHaveLength(1);
+      expect(frame.firstElementChild).toBe(screen.getByTestId("map-container"));
+    });
+
+    it.each([
+      ["insights", "insights" as const],
+      ["records", "records" as const]
+    ])("shows the legend outside the frame that clips the map (%s page)", async (_name, page) => {
+      const { legend, frame } = await openMapPage(page);
+
+      expect(legend.closest(".map-shell")).toBeNull();
+      expect(frame.contains(legend)).toBe(false);
+      expect(legend.closest(".map-card")).toBe(frame.closest(".map-card"));
+    });
+  });
+
   describe("when the page opens", () => {
     // Records every API request and lets it continue to the regular handlers (a handler that returns nothing
     // passes the request on). A request counts as completed when it was not cancelled by the page.

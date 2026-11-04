@@ -317,32 +317,35 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
       {mapData.features.length === 0 ? (
         <p className="map-empty">{emptyText}</p>
       ) : (
-        <div className="map-shell">
+        <>
           {legend ? <p className="map-legend">{legend}</p> : null}
-          <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={false}>
-            <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <FitBounds positions={positions} />
-            {mapData.features.map((point) => (
-              <Polyline
-                key={`${point.properties.recordId}-${point.properties.streetId}`}
-                positions={toLeafletPositions(point)}
-                pathOptions={{ color: point.properties.color, weight: 6, opacity: 0.8 }}
-              >
-                <Popup>
-                  <strong>{point.properties.streetName}</strong>
-                  <br />
-                  Volume: {point.properties.vehicleVolume}
-                  <br />
-                  Nível: {trafficLevelLabel(point.properties.trafficLevel)}
-                </Popup>
-              </Polyline>
-            ))}
-          </MapContainer>
-        </div>
+          {/* The frame clips what overflows it and the map fills all of its height: nothing but the map may go inside. */}
+          <div className="map-shell">
+            <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={false}>
+              <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <FitBounds positions={positions} />
+              {mapData.features.map((point) => (
+                <Polyline
+                  key={`${point.properties.recordId}-${point.properties.streetId}`}
+                  positions={toLeafletPositions(point)}
+                  pathOptions={{ color: point.properties.color, weight: 6, opacity: 0.8 }}
+                >
+                  <Popup>
+                    <strong>{point.properties.streetName}</strong>
+                    <br />
+                    Volume: {point.properties.vehicleVolume}
+                    <br />
+                    Nível: {trafficLevelLabel(point.properties.trafficLevel)}
+                  </Popup>
+                </Polyline>
+              ))}
+            </MapContainer>
+          </div>
+        </>
       )}
     </section>
   );
