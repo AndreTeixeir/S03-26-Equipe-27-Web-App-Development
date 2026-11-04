@@ -1,9 +1,11 @@
 package com.smarttrafficflow.backend.api.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smarttrafficflow.backend.api.exception.GlobalExceptionHandler;
 import com.smarttrafficflow.backend.domain.map.service.TrafficMapService;
 import com.smarttrafficflow.backend.domain.trafficrecords.repository.TrafficRecordRepository;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -118,6 +120,39 @@ class MapControllerTests {
                 .andExpect(jsonPath("$.meta.scope").value("latest"))
                 .andExpect(jsonPath("$.meta.limit").value(250))
                 .andExpect(jsonPath("$.meta.count").value(1));
+    }
+
+    @Test
+    @DisplayName("paints up to 100 vehicles as LOW, up to 200 as MEDIUM and above that as HIGH, at each limit")
+    void paintsTheTrafficLevelsAtTheirLimits() throws Exception {
+        // The map legend in the frontend (lib/labels.ts, trafficLevelScale) shows these same limits and colors.
+        Object[][] expected = {
+                {0, "LOW", "#2BA36A"},
+                {100, "LOW", "#2BA36A"},
+                {101, "MEDIUM", "#FFB24A"},
+                {200, "MEDIUM", "#FFB24A"},
+                {201, "HIGH", "#E04545"},
+                {1000, "HIGH", "#E04545"}
+        };
+        SoftAssertions softly = new SoftAssertions();
+
+        for (Object[] row : expected) {
+            int volume = (int) row[0];
+            UUID recordId = UUID.randomUUID();
+            TrafficRecordRepository.TrafficMapFeatureView featureView = view(recordId, UUID.randomUUID(), 404L,
+                    "Rua do Limite", volume, "{\"type\":\"LineString\",\"coordinates\":[[-46.63,-23.55],[-46.62,-23.54]]}");
+            when(trafficMapService.findContent(List.of(recordId))).thenReturn(selection(featureView));
+
+            String body = mockMvc.perform(get("/api/traffic-map").param("recordIds", recordId.toString()))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode properties = objectMapper.readTree(body).get("features").get(0).get("properties");
+
+            softly.assertThat(properties.get("trafficLevel").asText()).as("level of %d vehicles", volume).isEqualTo(row[1]);
+            softly.assertThat(properties.get("color").asText()).as("color of %d vehicles", volume).isEqualTo(row[2]);
+        }
+
+        softly.assertAll();
     }
 
     @Test
