@@ -79,7 +79,7 @@ public class TrafficRecordService {
     }
 
     public PagedTrafficRecordResponse findPage(int page, int size, String query) {
-        String queryPattern = buildQueryPattern(query);
+        RecordFilter filter = RecordFilter.of(query);
         PageRequest pageRequest = PageRequest.of(
                 page,
                 Math.min(size, MAX_PAGE_SIZE),
@@ -88,7 +88,8 @@ public class TrafficRecordService {
                         Sort.Order.desc("id")
                 )
         );
-        Page<TrafficRecord> recordsPage = repository.findPageWithStreet(queryPattern, pageRequest);
+        Page<TrafficRecord> recordsPage = repository.findPageWithStreet(
+                filter.textPattern(), filter.weatherCodes(), filter.roadTypeCodes(), pageRequest);
         List<TrafficRecordResponse> items = recordsPage.getContent().stream().map(this::toResponse).toList();
         log.debug("TrafficRecord findPage returned {} records from total={} for page={}",
                 items.size(), recordsPage.getTotalElements(), page);
@@ -107,7 +108,9 @@ public class TrafficRecordService {
      */
     public RecordIdsResponse findFilteredIds(String query) {
         int limit = limits.exportMaxRecords();
-        Page<UUID> ids = repository.findIdsByFilter(buildQueryPattern(query), PageRequest.of(0, limit));
+        RecordFilter filter = RecordFilter.of(query);
+        Page<UUID> ids = repository.findIdsByFilter(
+                filter.textPattern(), filter.weatherCodes(), filter.roadTypeCodes(), PageRequest.of(0, limit));
         boolean truncated = ids.getTotalElements() > ids.getNumberOfElements();
         log.debug("TrafficRecord findFilteredIds returned {} ids of {} matches (limit {})",
                 ids.getNumberOfElements(), ids.getTotalElements(), limit);
@@ -140,14 +143,6 @@ public class TrafficRecordService {
 
     public List<TrafficRecordRepository.TrafficMapFeatureView> findLatestMapFeatures(int limit) {
         return repository.findLatestMapFeatures(limit);
-    }
-
-    private String buildQueryPattern(String query) {
-        if (query == null) {
-            return null;
-        }
-        String trimmed = query.trim();
-        return trimmed.isEmpty() ? null : "%" + trimmed.toLowerCase() + "%";
     }
 
     private TrafficRecordResponse toResponse(TrafficRecord record) {

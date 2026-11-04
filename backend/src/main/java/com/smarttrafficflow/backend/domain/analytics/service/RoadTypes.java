@@ -13,7 +13,14 @@ public final class RoadTypes {
 
     private static final List<String> KNOWN_IN_ORDER = List.of("LOCAL", "ARTERIAL", "HIGHWAY");
 
+    private static final List<String> CODES_WITH_LABEL = List.of("LOCAL", "ARTERIAL", "HIGHWAY", UNKNOWN);
+
     private RoadTypes() {
+    }
+
+    /** The codes that have a name on the screen, in the presentation order ({@code UNKNOWN} last). */
+    public static List<String> codes() {
+        return CODES_WITH_LABEL;
     }
 
     /**

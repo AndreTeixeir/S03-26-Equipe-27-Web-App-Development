@@ -453,10 +453,39 @@ button {
 .map-legend {
   margin: 0;
   padding: 10px 16px;
+  border-radius: 16px;
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--muted);
   background: rgba(18, 60, 99, 0.05);
+}
+
+.map-color-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+  padding: 0 4px;
+  list-style: none;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.map-color-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-color-legend strong {
+  color: var(--ink-blue);
+}
+
+.map-color-legend__swatch {
+  flex: none;
+  width: 26px;
+  height: 6px;
+  border-radius: 999px;
 }
 
 .map-shell {

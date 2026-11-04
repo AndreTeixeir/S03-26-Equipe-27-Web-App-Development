@@ -37,6 +37,8 @@ class TrafficRecordRepositoryIT {
             "{\"type\":\"LineString\",\"coordinates\":[[-46.6333,-23.5505],[-46.634,-23.551]]}";
     private static final String FLORES_GEOMETRY =
             "{\"type\":\"LineString\",\"coordinates\":[[-46.64,-23.56],[-46.641,-23.561]]}";
+    /** No word of the filter matched a weather or road type label. */
+    private static final List<String> NO_CODES = List.of();
 
     @Autowired
     private TrafficRecordRepository trafficRecordRepository;
@@ -109,7 +111,7 @@ class TrafficRecordRepositoryIT {
     void pagesRecordsWithServiceSort() {
         PageRequest firstPage = PageRequest.of(0, 2, Sort.by(Sort.Order.desc("timestamp"), Sort.Order.desc("id")));
 
-        Page<TrafficRecord> page = trafficRecordRepository.findPageWithStreet(null, firstPage);
+        Page<TrafficRecord> page = trafficRecordRepository.findPageWithStreet(null, NO_CODES, NO_CODES, firstPage);
 
         assertThat(page.getTotalElements()).isEqualTo(3);
         assertThat(page.getTotalPages()).isEqualTo(2);
@@ -122,25 +124,65 @@ class TrafficRecordRepositoryIT {
     void filtersPagesByQueryPattern() {
         PageRequest pageRequest = PageRequest.of(0, 10, Sort.by(Sort.Order.desc("timestamp")));
 
-        assertThat(trafficRecordRepository.findPageWithStreet("%highway%", pageRequest).getContent())
+        assertThat(trafficRecordRepository.findPageWithStreet("%highway%", NO_CODES, NO_CODES, pageRequest).getContent())
                 .extracting(TrafficRecord::getId).containsExactly(highwayRecordId);
-        assertThat(trafficRecordRepository.findPageWithStreet("%flores%", pageRequest).getContent())
+        assertThat(trafficRecordRepository.findPageWithStreet("%flores%", NO_CODES, NO_CODES, pageRequest).getContent())
                 .extracting(TrafficRecord::getId).containsExactly(floresRecordId);
-        assertThat(trafficRecordRepository.findPageWithStreet("%chuva%", pageRequest).getContent())
+        assertThat(trafficRecordRepository.findPageWithStreet("%chuva%", NO_CODES, NO_CODES, pageRequest).getContent())
                 .extracting(TrafficRecord::getId).containsExactly(morningRecordId);
-        assertThat(trafficRecordRepository.findPageWithStreet("%acidente%", pageRequest).getContent())
+        assertThat(trafficRecordRepository.findPageWithStreet("%acidente%", NO_CODES, NO_CODES, pageRequest).getContent())
                 .extracting(TrafficRecord::getId).containsExactly(highwayRecordId);
-        assertThat(trafficRecordRepository.findPageWithStreet("%avenida%", pageRequest).getTotalElements())
-                .isEqualTo(2);
+        assertThat(trafficRecordRepository.findPageWithStreet("%avenida%", NO_CODES, NO_CODES, pageRequest)
+                .getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("filters by the weather and road type codes, ignoring the case of what is stored, in the page and in the ids")
+    void filtersByTheWeatherAndRoadTypeCodes() {
+        // Free text in lower case: the screen shows it as "Chuva" and "Via local", so the codes must find it too.
+        UUID lowerCaseRecordId = saveRecord(floresId, "2024-06-19T10:00:00Z", "local", 5, null, "rain");
+        entityManager.flush();
+        entityManager.clear();
+        PageRequest pageRequest = PageRequest.of(0, 10, Sort.by(Sort.Order.desc("timestamp"), Sort.Order.desc("id")));
+        PageRequest idsRequest = PageRequest.of(0, 10);
+        String matchesNoText = "%zzz%";
+
+        assertThat(trafficRecordRepository.findPageWithStreet(matchesNoText, List.of("RAIN"), NO_CODES, pageRequest)
+                .getContent()).extracting(TrafficRecord::getId).containsExactly(lowerCaseRecordId);
+        assertThat(trafficRecordRepository.findPageWithStreet(matchesNoText, NO_CODES, List.of("LOCAL"), pageRequest)
+                .getContent()).extracting(TrafficRecord::getId).containsExactly(lowerCaseRecordId, floresRecordId);
+        assertThat(trafficRecordRepository.findPageWithStreet(matchesNoText, NO_CODES, List.of("LOCAL"), pageRequest)
+                .getTotalElements()).isEqualTo(2);
+
+        Page<UUID> ids = trafficRecordRepository.findIdsByFilter(
+                matchesNoText, List.of("RAIN"), List.of("HIGHWAY"), idsRequest);
+        assertThat(ids.getContent()).containsExactly(lowerCaseRecordId, highwayRecordId);
+        assertThat(ids.getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("empty code lists do not change the result of the text search nor break the query")
+    void emptyCodeListsDoNotChangeTheTextSearch() {
+        PageRequest pageRequest = PageRequest.of(0, 10, Sort.by(Sort.Order.desc("timestamp"), Sort.Order.desc("id")));
+
+        assertThat(trafficRecordRepository.findPageWithStreet(null, NO_CODES, NO_CODES, pageRequest).getTotalElements())
+                .isEqualTo(3);
+        assertThat(trafficRecordRepository.findPageWithStreet("%zzz%", NO_CODES, NO_CODES, pageRequest)
+                .getTotalElements()).isZero();
+        assertThat(trafficRecordRepository.findIdsByFilter("%zzz%", NO_CODES, NO_CODES, PageRequest.of(0, 10))
+                .getTotalElements()).isZero();
     }
 
     @Test
     @DisplayName("lists only the ids of the filtered records, newest first, with the total of matches")
     void listsTheFilteredIds() {
-        Page<UUID> all = trafficRecordRepository.findIdsByFilter(null, PageRequest.of(0, 2));
-        Page<UUID> highways = trafficRecordRepository.findIdsByFilter("%highway%", PageRequest.of(0, 10));
-        Page<UUID> avenue = trafficRecordRepository.findIdsByFilter("%avenida%", PageRequest.of(0, 10));
-        Page<UUID> nothing = trafficRecordRepository.findIdsByFilter("%inexistente%", PageRequest.of(0, 10));
+        Page<UUID> all = trafficRecordRepository.findIdsByFilter(null, NO_CODES, NO_CODES, PageRequest.of(0, 2));
+        Page<UUID> highways = trafficRecordRepository.findIdsByFilter(
+                "%highway%", NO_CODES, NO_CODES, PageRequest.of(0, 10));
+        Page<UUID> avenue = trafficRecordRepository.findIdsByFilter(
+                "%avenida%", NO_CODES, NO_CODES, PageRequest.of(0, 10));
+        Page<UUID> nothing = trafficRecordRepository.findIdsByFilter(
+                "%inexistente%", NO_CODES, NO_CODES, PageRequest.of(0, 10));
 
         assertThat(all.getContent()).containsExactly(floresRecordId, highwayRecordId);
         assertThat(all.getTotalElements()).isEqualTo(3);

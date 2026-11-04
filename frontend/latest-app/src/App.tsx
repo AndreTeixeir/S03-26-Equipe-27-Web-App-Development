@@ -2,7 +2,14 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { MapContainer, Polyline, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
-import { peakHourLabel, roadTypeLabel, trafficLevelLabel, weatherLabel, weekdayLabel } from "./lib/labels";
+import {
+  peakHourLabel,
+  roadTypeLabel,
+  trafficLevelLabel,
+  trafficLevelLegend,
+  weatherLabel,
+  weekdayLabel
+} from "./lib/labels";
 import type { ExportResult } from "./lib/api";
 import {
   API_BASE_URL,
@@ -317,32 +324,44 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
       {mapData.features.length === 0 ? (
         <p className="map-empty">{emptyText}</p>
       ) : (
-        <div className="map-shell">
+        <>
           {legend ? <p className="map-legend">{legend}</p> : null}
-          <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={false}>
-            <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <FitBounds positions={positions} />
-            {mapData.features.map((point) => (
-              <Polyline
-                key={`${point.properties.recordId}-${point.properties.streetId}`}
-                positions={toLeafletPositions(point)}
-                pathOptions={{ color: point.properties.color, weight: 6, opacity: 0.8 }}
-              >
-                <Popup>
-                  <strong>{point.properties.streetName}</strong>
-                  <br />
-                  Volume: {point.properties.vehicleVolume}
-                  <br />
-                  Nível: {trafficLevelLabel(point.properties.trafficLevel)}
-                </Popup>
-              </Polyline>
+          {/* The frame clips what overflows it and the map fills all of its height: nothing but the map may go inside. */}
+          <div className="map-shell">
+            <MapContainer center={getMapCenter(mapData)} zoom={12} scrollWheelZoom={false} zoomControl={false}>
+              <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <FitBounds positions={positions} />
+              {mapData.features.map((point) => (
+                <Polyline
+                  key={`${point.properties.recordId}-${point.properties.streetId}`}
+                  positions={toLeafletPositions(point)}
+                  pathOptions={{ color: point.properties.color, weight: 6, opacity: 0.8 }}
+                >
+                  <Popup>
+                    <strong>{point.properties.streetName}</strong>
+                    <br />
+                    Volume: {point.properties.vehicleVolume}
+                    <br />
+                    Nível: {trafficLevelLabel(point.properties.trafficLevel)}
+                  </Popup>
+                </Polyline>
+              ))}
+            </MapContainer>
+          </div>
+          <ul className="map-color-legend" aria-label="Cores do mapa">
+            {trafficLevelLegend().map((item) => (
+              <li key={item.level}>
+                <span className="map-color-legend__swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
+                <strong>{item.label}</strong>
+                <span>{item.range}</span>
+              </li>
             ))}
-          </MapContainer>
-        </div>
+          </ul>
+        </>
       )}
     </section>
   );

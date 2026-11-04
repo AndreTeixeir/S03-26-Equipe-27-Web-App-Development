@@ -32,6 +32,23 @@ const trafficLevelLabels: Record<string, string> = {
   HIGH: "Alto"
 };
 
+export type TrafficLevelStep = {
+  level: "LOW" | "MEDIUM" | "HIGH";
+  color: string;
+  /** Highest vehicle volume of the level, or null when there is no upper limit. */
+  maxVolume: number | null;
+};
+
+/**
+ * The limits and colors the backend uses to draw the map (MapController: toTrafficLevel and toColor). The map
+ * legend is built from here, so a change of limit or color in the backend is changed in this one place.
+ */
+export const trafficLevelScale: readonly TrafficLevelStep[] = [
+  { level: "LOW", color: "#2BA36A", maxVolume: 100 },
+  { level: "MEDIUM", color: "#FFB24A", maxVolume: 200 },
+  { level: "HIGH", color: "#E04545", maxVolume: null }
+];
+
 /** "ESTRADA_DE_TERRA" becomes "Estrada De Terra": readable text for codes the lists above do not know. */
 function titleCase(value: string) {
   return value.replace(/_/g, " ").toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
@@ -51,6 +68,21 @@ export function weatherLabel(value: string) {
 
 export function trafficLevelLabel(level: string) {
   return trafficLevelLabels[level.toUpperCase()] ?? titleCase(level);
+}
+
+/** What the map legend shows for each color: the level, its color and the range of vehicles it covers. */
+export function trafficLevelLegend() {
+  let floor = 0;
+  return trafficLevelScale.map(({ level, color, maxVolume }) => {
+    const range =
+      maxVolume === null
+        ? `acima de ${floor} veículos`
+        : floor === 0
+          ? `até ${maxVolume} veículos`
+          : `de ${floor + 1} a ${maxVolume} veículos`;
+    floor = maxVolume ?? floor;
+    return { level, label: trafficLevelLabel(level), color, range };
+  });
 }
 
 /**
