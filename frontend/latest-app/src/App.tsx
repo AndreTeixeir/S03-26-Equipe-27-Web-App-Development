@@ -2,7 +2,14 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState
 import type { FormEvent } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { MapContainer, Polyline, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
-import { peakHourLabel, roadTypeLabel, trafficLevelLabel, weatherLabel, weekdayLabel } from "./lib/labels";
+import {
+  peakHourLabel,
+  roadTypeLabel,
+  trafficLevelLabel,
+  trafficLevelLegend,
+  weatherLabel,
+  weekdayLabel
+} from "./lib/labels";
 import type { ExportResult } from "./lib/api";
 import {
   API_BASE_URL,
@@ -345,6 +352,15 @@ function TrafficMapCard({ eyebrow, title, mapData, emptyText }: TrafficMapCardPr
               ))}
             </MapContainer>
           </div>
+          <ul className="map-color-legend" aria-label="Cores do mapa">
+            {trafficLevelLegend().map((item) => (
+              <li key={item.level}>
+                <span className="map-color-legend__swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
+                <strong>{item.label}</strong>
+                <span>{item.range}</span>
+              </li>
+            ))}
+          </ul>
         </>
       )}
     </section>

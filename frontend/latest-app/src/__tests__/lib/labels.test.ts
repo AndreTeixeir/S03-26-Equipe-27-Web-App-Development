@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { peakHourLabel, roadTypeLabel, trafficLevelLabel, weatherLabel, weekdayLabel } from "../../lib/labels";
+import {
+  peakHourLabel,
+  roadTypeLabel,
+  trafficLevelLabel,
+  trafficLevelLegend,
+  trafficLevelScale,
+  weatherLabel,
+  weekdayLabel
+} from "../../lib/labels";
 
 describe("labels", () => {
   describe("weekdayLabel", () => {
@@ -48,6 +56,32 @@ describe("labels", () => {
       expect(trafficLevelLabel("LOW")).toBe("Baixo");
       expect(trafficLevelLabel("MEDIUM")).toBe("Médio");
       expect(trafficLevelLabel("HIGH")).toBe("Alto");
+    });
+  });
+
+  describe("trafficLevelLegend", () => {
+    // The reference is MapController in the backend (toTrafficLevel and toColor): up to 100 vehicles is LOW, up to
+    // 200 is MEDIUM and above that is HIGH.
+    it("fixes the limits and the colors the backend uses for the map", () => {
+      expect(trafficLevelScale).toEqual([
+        { level: "LOW", color: "#2BA36A", maxVolume: 100 },
+        { level: "MEDIUM", color: "#FFB24A", maxVolume: 200 },
+        { level: "HIGH", color: "#E04545", maxVolume: null }
+      ]);
+    });
+
+    it("describes each color with its label and its range of vehicles", () => {
+      expect(trafficLevelLegend()).toEqual([
+        { level: "LOW", label: "Baixo", color: "#2BA36A", range: "até 100 veículos" },
+        { level: "MEDIUM", label: "Médio", color: "#FFB24A", range: "de 101 a 200 veículos" },
+        { level: "HIGH", label: "Alto", color: "#E04545", range: "acima de 200 veículos" }
+      ]);
+    });
+
+    it("names the levels with the same words as the map popup", () => {
+      expect(trafficLevelLegend().map((item) => item.label)).toEqual(
+        ["LOW", "MEDIUM", "HIGH"].map(trafficLevelLabel)
+      );
     });
   });
 
