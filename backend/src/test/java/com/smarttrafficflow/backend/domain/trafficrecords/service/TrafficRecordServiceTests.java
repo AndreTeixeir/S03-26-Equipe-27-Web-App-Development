@@ -54,7 +54,7 @@ class TrafficRecordServiceTests {
     @DisplayName("returns the ids of the filtered records, up to the export limit, flagging a cut")
     void returnsFilteredIdsFlaggingACut() {
         List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        when(trafficRecordRepository.findIdsByFilter(any(), any()))
+        when(trafficRecordRepository.findIdsByFilter(any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(ids, PageRequest.of(0, 3), 7));
 
         RecordIdsResponse response = trafficRecordService.findFilteredIds("  Norte ");
@@ -65,7 +65,11 @@ class TrafficRecordServiceTests {
         assertThat(response.truncated()).isTrue();
         ArgumentCaptor<org.springframework.data.domain.Pageable> pageable =
                 ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
-        verify(trafficRecordRepository).findIdsByFilter(org.mockito.ArgumentMatchers.eq("%norte%"), pageable.capture());
+        verify(trafficRecordRepository).findIdsByFilter(
+                org.mockito.ArgumentMatchers.eq("%norte%"),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                pageable.capture());
         assertThat(pageable.getValue().getPageSize()).isEqualTo(3);
         assertThat(pageable.getValue().getPageNumber()).isZero();
     }
@@ -74,11 +78,15 @@ class TrafficRecordServiceTests {
     @DisplayName("does not flag a cut when every match fits in the limit")
     void doesNotFlagACutWhenEverythingFits() {
         List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        when(trafficRecordRepository.findIdsByFilter(any(), any()))
+        when(trafficRecordRepository.findIdsByFilter(any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(ids, PageRequest.of(0, 3), 3));
 
         assertThat(trafficRecordService.findFilteredIds(null).truncated()).isFalse();
-        verify(trafficRecordRepository).findIdsByFilter(org.mockito.ArgumentMatchers.isNull(), any());
+        verify(trafficRecordRepository).findIdsByFilter(
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                any());
     }
 
     @Test
@@ -160,7 +168,7 @@ class TrafficRecordServiceTests {
     @Test
     @DisplayName("returns paged records with normalized query and stable metadata")
     void returnsPagedRecords() {
-        when(trafficRecordRepository.findPageWithStreet(any(), any())).thenReturn(new PageImpl<>(
+        when(trafficRecordRepository.findPageWithStreet(any(), any(), any(), any())).thenReturn(new PageImpl<>(
                 List.of(
                         entity("ARTERIAL", 120, "Avenida Central", 101L),
                         entity("HIGHWAY", 250, "Rodovia Norte", 202L)
@@ -176,21 +184,55 @@ class TrafficRecordServiceTests {
         assertThat(response.size()).isEqualTo(2);
         assertThat(response.totalItems()).isEqualTo(5);
         assertThat(response.totalPages()).isEqualTo(3);
-        verify(trafficRecordRepository).findPageWithStreet(org.mockito.ArgumentMatchers.eq("%norte%"), any());
+        verify(trafficRecordRepository).findPageWithStreet(
+                org.mockito.ArgumentMatchers.eq("%norte%"),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                any());
+    }
+
+    @Test
+    @DisplayName("passes the codes of the words the screen shows to the page and to the ids")
+    void passesTheCodesOfTheWordsTheScreenShows() {
+        when(trafficRecordRepository.findPageWithStreet(any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+        when(trafficRecordRepository.findIdsByFilter(any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 3), 0));
+
+        trafficRecordService.findPage(0, 20, "Via Expressa");
+        trafficRecordService.findFilteredIds("Via Expressa");
+        trafficRecordService.findPage(0, 20, "CHUVA");
+
+        verify(trafficRecordRepository).findPageWithStreet(
+                org.mockito.ArgumentMatchers.eq("%via expressa%"),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                org.mockito.ArgumentMatchers.eq(List.of("HIGHWAY")),
+                any());
+        verify(trafficRecordRepository).findIdsByFilter(
+                org.mockito.ArgumentMatchers.eq("%via expressa%"),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                org.mockito.ArgumentMatchers.eq(List.of("HIGHWAY")),
+                any());
+        verify(trafficRecordRepository).findPageWithStreet(
+                org.mockito.ArgumentMatchers.eq("%chuva%"),
+                org.mockito.ArgumentMatchers.eq(List.of("RAIN")),
+                org.mockito.ArgumentMatchers.eq(List.<String>of()),
+                any());
     }
 
     @Test
     @DisplayName("caps the requested page size at 100 records")
     void capsRequestedPageSize() {
-        when(trafficRecordRepository.findPageWithStreet(any(), any()))
-                .thenAnswer(invocation -> new PageImpl<>(List.of(), invocation.getArgument(1), 0));
+        when(trafficRecordRepository.findPageWithStreet(any(), any(), any(), any()))
+                .thenAnswer(invocation -> new PageImpl<>(List.of(), invocation.getArgument(3), 0));
 
         PagedTrafficRecordResponse oversized = trafficRecordService.findPage(0, 1000, null);
         PagedTrafficRecordResponse atLimit = trafficRecordService.findPage(0, 100, null);
 
         ArgumentCaptor<org.springframework.data.domain.Pageable> pageables =
                 ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
-        verify(trafficRecordRepository, org.mockito.Mockito.times(2)).findPageWithStreet(any(), pageables.capture());
+        verify(trafficRecordRepository, org.mockito.Mockito.times(2))
+                .findPageWithStreet(any(), any(), any(), pageables.capture());
         assertThat(pageables.getAllValues()).extracting(org.springframework.data.domain.Pageable::getPageSize)
                 .containsExactly(100, 100);
         assertThat(oversized.size()).isEqualTo(100);
