@@ -8,29 +8,67 @@ O objetivo é centralizar análise de tráfego urbano com:
 - geração de insights e exportações,
 - simulação de cenários.
 
-## Demonstração & Infraestrutura
+> **Sobre os dados:** os registros da demo não são reais. A maior parte foi gerada pela simulação da própria aplicação, sobre ruas reais de São Paulo importadas do OpenStreetMap. Os volumes, o clima e os horários são sorteados e não representam o trânsito de verdade.
 
-A aplicação está publicada em uma instância **Oracle Cloud Infrastructure (OCI)**, na região São Paulo:
+## Demonstração e infraestrutura
 
-- **Demo:** [http://168.138.135.46:5174/](http://168.138.135.46:5174/)
+A aplicação está publicada em uma instância **Oracle Cloud Infrastructure (OCI)**, na região São Paulo, com HTTPS:
 
-O deploy da stack completa é orquestrado via **Docker Compose**, subindo quatro serviços em containers:
+- **Demo:** [https://smarttraffic.andreteixeira.dev.br](https://smarttraffic.andreteixeira.dev.br)
+
+O endereço antigo por IP (`http://168.138.135.46:5174/`) redireciona para o domínio.
+
+> A demo é mantida em ambiente de avaliação e pode ficar indisponível eventualmente.
+
+### Telas
+
+**Página de insights:** os indicadores do volume registrado.
+
+![Página de insights com os indicadores](docs/prints/01-insights.png)
+
+**Gráficos:** o volume por hora, por dia da semana e por tipo de via, no horário de São Paulo.
+
+![Gráficos de volume por hora, por dia da semana e por tipo de via](docs/prints/02-graficos.png)
+
+**Mapa:** os registros mais recentes sobre as ruas, com a cor pelo volume de veículos.
+
+![Mapa de tráfego com a legenda das cores](docs/prints/03-mapa.png)
+
+**Registros:** a tabela com busca, que entende os termos em português (aqui, `chuva`).
+
+![Tabela de registros filtrada pela busca chuva](docs/prints/04-busca.png)
+
+### Serviços
+
+O deploy é orquestrado via **Docker Compose**, com três serviços em containers e um opcional:
 
 | Serviço | Descrição |
 |---|---|
 | `smarttraffic-db` | PostgreSQL + PostGIS (banco geoespacial) |
 | `smarttraffic-backend` | API Spring Boot |
-| `smarttraffic-web` | Servidor web (Caddy): frontend, proxy de `/api` e HTTPS |
-| `pgadmin` | Interface de administração do banco |
+| `smarttraffic-web` | Servidor web (Caddy): frontend, proxy de `/api` e HTTPS automático |
+| `pgadmin-ui` | Administração do banco (opcional, perfil `admin`; não roda na demo) |
 
-> Infraestrutura e deploy (provisionamento da instância OCI e configuração do Docker Compose): **André Teixeira**.
-> A demo é mantida em ambiente de avaliação e pode ficar indisponível eventualmente.
+## Autoria
+
+- **[Tirso](https://github.com/HandlezGZ):** a aplicação original, desenvolvida no hackathon da NoCountry (março e abril de 2026): backend, frontend, banco com PostGIS, importação de ruas e simulação.
+- **[André Teixeira](https://github.com/AndreTeixeir):** no hackathon, os testes do frontend e do backend e o Docker do backend; depois, o deploy na OCI e as rodadas de correção descritas abaixo.
+
+## Depois do hackathon
+
+O projeto passou por uma revisão de código e por rodadas de correção, feitas no fork [AndreTeixeir/S03-26-Equipe-27-Web-App-Development](https://github.com/AndreTeixeir/S03-26-Equipe-27-Web-App-Development) e trazidas para este repositório. Em resumo:
+
+- **Testes e CI:** GitHub Actions para backend e frontend; testes de banco com Testcontainers; testes unitários (surefire) separados dos de integração (failsafe).
+- **Segurança da API:** sem senhas padrão (a aplicação não sobe sem elas); CORS restrito a origens exatas; Swagger só no perfil de desenvolvimento; limite de escritas por IP; limites no tamanho da página e da simulação; erros do cliente respondem 400, 404, 405 ou 415, e não 500.
+- **Deploy:** frontend e API servidos pelo Caddy com HTTPS automático e domínio próprio; backend e web sem privilégios de root; containers que esperam o banco e o backend ficarem saudáveis; o endereço antigo por IP redireciona para o domínio.
+- **Dados:** importação das ruas numa transação única, descartando geometrias e nomes inválidos; estatísticas agregadas no banco, em ordem fixa (24 horas, 7 dias, tipos de via) e no fuso de São Paulo; insights em português.
+- **Tela:** textos em português; exportação CSV e JSON que respeita a seleção (o CSV no padrão RFC 4180, com proteção contra fórmulas); mapa com os registros mais recentes e legenda das cores; busca que entende os termos em português do clima e do tipo de via.
 
 ## Arquitetura
 
 - `backend/`: API Spring Boot (Java 21) com JPA, Flyway e PostgreSQL/PostGIS.
-- `frontend/latest-app/`: aplicação React + Vite + TypeScript.
-- `infra/`: `docker-compose.yml` para banco, backend, frontend e pgAdmin (perfil opcional).
+- `frontend/latest-app/`: aplicação React + Vite + TypeScript, com Leaflet no mapa e Recharts nos gráficos.
+- `infra/`: `docker-compose.yml` para banco, backend, web (Caddy) e pgAdmin (perfil opcional).
 
 ## Como rodar localmente
 
